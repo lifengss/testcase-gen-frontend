@@ -33,7 +33,10 @@ async function api(method, path, { query = {}, body, form } = {}) {
     opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(b);
   }
   const r = await fetch(url, opts);
-  const text = await r.text();
+  // 强制按 UTF-8 解码响应字节：避免浏览器在「自动检测编码」下把正确的 UTF-8 当成 GBK 解码，
+  // 导致中文显示为閿涳拷 这类乱码（mojibake）。源数据（BFF/KS）均为 UTF-8。
+  const buf = await r.arrayBuffer();
+  const text = new TextDecoder('utf-8').decode(buf);
   let data; try { data = JSON.parse(text); } catch { data = { raw: text }; }
   return { ok: r.ok, status: r.status, data };
 }
