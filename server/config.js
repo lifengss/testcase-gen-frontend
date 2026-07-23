@@ -16,6 +16,9 @@ function defaults() {
       endpoint: process.env.AI_ENDPOINT || '',
       apiKey: process.env.AI_API_KEY || '',
       model: process.env.AI_MODEL || 'gpt-4o-mini',
+      // CodeBuddy 通道：agent 最大工具调用/turn 轮次。生成任务步骤较多（检索上下文、写文件等），
+      // 默认 4 偏小易触发「Max turns exceeded」，可调大；OpenAI 通道为单次调用、不使用该值。
+      maxTurns: Number(process.env.AI_MAX_TURNS || 8),
     },
   };
 }

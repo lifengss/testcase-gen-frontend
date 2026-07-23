@@ -391,6 +391,8 @@ input[type=file]{display:none}
         <div class="field" id="setEndpointField" style="display:none"><label>API Endpoint（OpenAI 兼容）</label><input class="ipt" id="setAiEndpoint" placeholder="https://.../v1/chat/completions"/></div>
         <div class="field" id="setKeyField" style="display:none"><label>API Key</label><input class="ipt" id="setAiKey" type="password" placeholder="sk-..."/></div>
         <div class="field" id="setModelField" style="display:none"><label>模型</label><input class="ipt" id="setAiModel" placeholder="my-hy3（注册到 CodeBuddy 的模型 id）"/></div>
+        <!-- 仅 CodeBuddy 通道生效：agent 最大工具调用/turn 轮次，过大生成更充分但更慢且易超预算 -->
+        <div class="field" id="setMaxTurnsField" style="display:none"><label>最大生成轮次 (maxTurns)</label><input class="ipt" id="setMaxTurns" type="number" min="1" max="50" placeholder="8"/><span class="hint">CodeBuddy agent 的最大 turn 轮次；生成步骤多时调大可避免「Max turns exceeded」，建议 6–12</span></div>
         <div class="hint" id="setAiNote"></div>
         <div class="test-row"><button class="btn btn-ghost btn-sm" id="setTest">测试连接</button><span class="test-msg" id="setTestMsg"></span></div>
       </div>

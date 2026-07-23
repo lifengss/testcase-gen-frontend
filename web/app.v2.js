@@ -900,6 +900,8 @@ const cbModelField = document.getElementById('cbModelField');
 const cbModel = document.getElementById('cbModel');
 const cbBuiltin = document.getElementById('cbBuiltin');
 const cbCustom = document.getElementById('cbCustom');
+const setMaxTurnsField = document.getElementById('setMaxTurnsField');
+const setMaxTurns = document.getElementById('setMaxTurns');
 const setTestMsg = document.getElementById('setTestMsg');
 
 // CodeBuddy 内置模型静态清单（与后端 BUILTIN_CODEBUDDY_MODELS 对齐；即使 API 失败也保证有可选项，不卡在「加载中…」）
@@ -935,6 +937,8 @@ function syncProviderUI() {
   setEndpointField.style.display = (isOpenAI || (isCb && custom)) ? '' : 'none';
   setKeyField.style.display = (isOpenAI || (isCb && custom)) ? '' : 'none';
   setModelField.style.display = (isOpenAI || (isCb && custom)) ? '' : 'none';
+  // maxTurns 仅对 CodeBuddy 通道有意义（agentic 多轮）；OpenAI 为单次调用不使用
+  if (setMaxTurnsField) setMaxTurnsField.style.display = isCb ? '' : 'none';
   const note = document.getElementById('setAiNote');
   if (note) {
     if (isOpenAI) note.textContent = '直连你的 OpenAI 兼容服务（/v1/chat/completions）生成。';
@@ -967,6 +971,7 @@ function fillSettings(cfg) {
   setAiKey.value = (cfg.ai && cfg.ai.apiKey) || '';
   const model = (cfg.ai && cfg.ai.model) || '';
   setAiModel.value = model;
+  if (setMaxTurns) setMaxTurns.value = (cfg.ai && cfg.ai.maxTurns) || 8;
   syncProviderUI();
   // 内置模型下拉：先同步填充静态清单并选中当前模型，再异步拉取完整清单（含已注册自定义） enrich
   if (setAiProvider.value === 'codebuddy' && !useCustom) {
@@ -1014,6 +1019,7 @@ if (setSave) setSave.addEventListener('click', async () => {
       endpoint: (p === 'openai' || useCustom) ? setAiEndpoint.value.trim() : '',
       apiKey: (p === 'openai' || useCustom) ? setAiKey.value.trim() : '',
       model: model,
+      maxTurns: parseInt((setMaxTurns && setMaxTurns.value), 10) || 8,
     },
   };
   const { ok, data } = await api('PUT', '/api/settings', { body: payload });

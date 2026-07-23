@@ -278,6 +278,7 @@ async function callAIProvider(op, query, constraints) {
     return callCodeBuddy(sys + '\n\n' + query, {
       model: m,
       loadSettings: useCustom,
+      maxTurns: c.ai.maxTurns,
     });
   }
   if (c.ai.provider === 'openai') return callOpenAI(op, query, constraints);
