@@ -227,7 +227,7 @@ function renderHits(hits) {
   const box = $('#ctxRefs'); if (!box) return;
   box.innerHTML = '';
   if (!hits || !hits.length) { box.innerHTML = '<div class="ref muted">本次检索无命中</div>'; return; }
-  const labels = { history: '历史用例', rule: '质量门禁', wiki: '项目Wiki', dep: '代码依赖' };
+  const labels = { history: '历史用例', rule: '质量门禁', wiki: '项目Wiki', dep: '代码依赖', entity: 'GBrain实体' };
   const groups = {};
   hits.forEach(h => { (groups[h.kind] = groups[h.kind] || []).push(h); });
   Object.keys(labels).forEach(k => {

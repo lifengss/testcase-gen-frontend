@@ -26,6 +26,8 @@ app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 const upload = multer({ dest: path.join(__dirname, '..', 'tmp') });
+// 源数据上传用内存存储：直接拿到原始字节(req.file.buffer)，避免落盘 tmp 再读回带来的编码隐患
+const memUpload = multer({ storage: multer.memoryStorage() });
 
 // ---------------------------------------------------------------------------
 // KS-Adapter：统一转发到知识系统
@@ -98,12 +100,23 @@ app.post('/api/drafts/:id/commit', proxy('POST', '/api/drafts/:id/commit'));
 app.post('/api/drafts/batch-commit', proxy('POST', '/api/drafts/batch-commit'));
 
 // 源数据上传：接收 multipart，转发给知识系统
-app.post('/api/source-upload', upload.single('file'), async (req, res) => {
+app.post('/api/source-upload', memUpload.single('file'), async (req, res) => {
   try {
     const form = new FormData();
     if (req.file) {
-      const buf = fs.readFileSync(req.file.path);
-      form.append('file', new Blob([buf], { type: req.file.mimetype || 'application/octet-stream' }), req.file.originalname);
+      // 直接转发原始字节，绝不做字符串解码/重编码，避免 Latin-1/UTF-8 互转产生乱码
+      const buf = req.file.buffer;
+      // 关键：undici 序列化 multipart 时，若 filename 含非 ASCII 字节会损坏文件【内容】；
+      // 因此文件 part 使用 ASCII 文件名，真实文件名经 filename 文本字段传递（busboy 对文本字段解码正常）
+      const safeName = 'source-' + Date.now() + (path.extname(req.file.originalname) || '.bin');
+      // req.file.originalname 被 busboy 误按 Latin-1 解码成乱码，这里还原回正确的 UTF-8 文件名
+      let realName = req.file.originalname;
+      try {
+        const recovered = Buffer.from(req.file.originalname, 'latin1').toString('utf-8');
+        if (/[\u4e00-\u9fa5]/.test(recovered)) realName = recovered;
+      } catch (_) {}
+      form.append('file', new Blob([buf], { type: req.file.mimetype || 'application/octet-stream' }), safeName);
+      form.append('filename', realName);
     }
     if (req.body.content) form.append('content', req.body.content);
     form.append('type', req.body.type || (req.file ? 'code' : 'quality_rule'));
@@ -113,8 +126,6 @@ app.post('/api/source-upload', upload.single('file'), async (req, res) => {
     res.status(status).json(data);
   } catch (e) {
     res.status(502).json({ success: false, error: '上传代理失败: ' + e.message });
-  } finally {
-    if (req.file) { try { fs.unlinkSync(req.file.path); } catch (_) {} }
   }
 });
 
@@ -151,12 +162,36 @@ async function retrieveHits(project, op, scope, constraints) {
   if (constraints && constraints.note) parts.push(constraints.note);
   parts.push(opName);
   const query = parts.join(' ') || opName;
+
+  // 功能模块（PRD 派生）→ 精准召回 GBrain 实体 + 图谱关系，作为高优上下文
+  let entityHits = [];
+  if (scope.functions && scope.functions.length) {
+    try {
+      const er = await ksCall('GET', '/api/wiki/module-entities', { query: { project, modules: JSON.stringify(scope.functions) } });
+      const ed = er && er.data && er.data.data;
+      if (ed) {
+        const toHit = (e, via) => ({
+          kind: 'entity', category: 'entity', id: e.id,
+          title: (via ? '↳ ' : '★ ') + e.name + (e.type ? '（' + e.type + '）' : ''),
+          snippet: (e.definition ? e.definition + ' ' : '') +
+            (e.relations && e.relations.length ? '关联：' + e.relations.map(r => r.target + '·' + r.type).join('、') : '') +
+            (e.sourceSection ? '｜出处：' + e.sourceSection : ''),
+          score: via ? 99 : 100, via: via || null,
+        });
+        entityHits = (ed.entities || []).map(e => toHit(e, null))
+          .concat((ed.related || []).map(e => toHit(e, e.via)));
+      }
+    } catch (_) { entityHits = []; }
+  }
+
+  // 关键词检索：功能模块已由实体精准覆盖时，降低 limit 以减少冗余噪声
+  const limit = (scope.functions && scope.functions.length && entityHits.length) ? 6 : 12;
   let results = [];
   try {
-    const r = await ksCall('POST', '/api/search', { body: { query, mode: 'keyword', limit: 12, project } });
+    const r = await ksCall('POST', '/api/search', { body: { query, mode: 'keyword', limit, project } });
     results = (r && r.data && r.data.data && Array.isArray(r.data.data.results)) ? r.data.data.results : [];
   } catch (e) { results = []; }
-  const hits = results.map(h => {
+  const kwHits = results.map(h => {
     let kind = h.type || 'other';
     if (kind === 'project-wiki') {
       const p = (h.id || '').toLowerCase();
@@ -165,7 +200,8 @@ async function retrieveHits(project, op, scope, constraints) {
     else if (kind === 'quality-rules') kind = 'rule';
     return { kind, category: h.type, id: h.id, title: h.title, path: h.id, score: h.score, snippet: h.snippet };
   });
-  return { query, hits };
+  // 实体上下文置顶（高优），再接关键词命中
+  return { query, hits: entityHits.concat(kwHits) };
 }
 
 // ---------------------------------------------------------------------------
@@ -180,12 +216,14 @@ function buildQuery(op, sourceRefs, scope, constraints, ctx, hits) {
   const funcs = (scope.functions || []).join(', ') || '';
   const depth = scope.depth === 'full' ? '全量' : '冒烟';
   // 以检索命中（hits）作为真实上下文：命中条目的 snippet 直接喂给 AI，而非仅列标题
-  const byKind = { history: [], rule: [], wiki: [], dep: [] };
+  const byKind = { history: [], rule: [], wiki: [], dep: [], entity: [] };
   (hits || []).forEach(h => { (byKind[h.kind] = byKind[h.kind] || []).push(h); });
   const ctxLines = [];
   const pushKind = (label, arr) => {
-    arr.slice(0, 5).forEach(h => ctxLines.push(`- [${label}] ${h.title}（相关度 ${h.score}）：${(h.snippet || '').slice(0, 200)}`));
+    arr.slice(0, 6).forEach(h => ctxLines.push(`- [${label}] ${h.title}（相关度 ${h.score}）：${(h.snippet || '').slice(0, 240)}`));
   };
+  // 实体上下文（GBrain 抽取 + 图谱关系）优先，再补关键词检索命中
+  pushKind('GBrain实体', byKind.entity);
   pushKind('历史用例', byKind.history);
   pushKind('质量门禁', byKind.rule);
   pushKind('项目Wiki', byKind.wiki);
