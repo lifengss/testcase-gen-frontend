@@ -173,7 +173,10 @@ async function retrieveHits(project, op, scope, constraints) {
 // ---------------------------------------------------------------------------
 function buildQuery(op, sourceRefs, scope, constraints, ctx, hits) {
   const opName = { gen_outline: '测试用例大纲', gen_cases: '测试用例条目', gen_scripts: '自动化测试脚本' }[op] || '测试用例';
-  const mods = (scope.modules && scope.modules.length) ? scope.modules.join(', ') : '未限定模块';
+  // 范围模块：代码模块已勾选则如实列出；否则若函数模块已选，则范围“由功能模块限定”（不再误报“全部/未限定”）；两者皆无才“未限定模块”
+  const mods = (scope.modules && scope.modules.length)
+    ? scope.modules.join(', ')
+    : (scope.functions && scope.functions.length ? '由功能模块限定' : '未限定模块');
   const funcs = (scope.functions || []).join(', ') || '';
   const depth = scope.depth === 'full' ? '全量' : '冒烟';
   // 以检索命中（hits）作为真实上下文：命中条目的 snippet 直接喂给 AI，而非仅列标题
