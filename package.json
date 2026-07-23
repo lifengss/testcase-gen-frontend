@@ -1,0 +1,17 @@
+{
+  "name": "testcase-gen-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI 测试用例自动生成 · 前端业务系统（BFF 编排层 + Web UI）",
+  "scripts": {
+    "start": "node server/index.js",
+    "seed": "node server/seed-testcases.js"
+  },
+  "dependencies": {
+    "@tencent-ai/agent-sdk": "^0.1.30",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}
