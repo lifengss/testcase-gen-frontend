@@ -46,7 +46,30 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;bac
 .spacer{flex:1}
 .chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;background:var(--surface);border:1px solid var(--border);font-size:12px;color:var(--text-2)}
 .chip .led{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.chip svg{width:13px;height:13px;opacity:.65;flex:none}
+/* 项目空间：项目标签 + 测试概要仪表盘 */
+.proj-tabs{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0 0}
+.ptab{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:11px 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--text-2);cursor:pointer;transition:.18s var(--ease);min-width:150px}
+.ptab:hover{border-color:var(--border-strong);background:var(--surface-2);transform:translateY(-1px)}
+.ptab.on{border-color:transparent;background:linear-gradient(135deg,rgba(99,102,241,.22),rgba(34,211,238,.16));box-shadow:inset 0 0 0 1px rgba(34,211,238,.4),0 8px 22px rgba(99,102,241,.25);color:var(--text-1)}
+.ptab-name{font-size:14px;font-weight:600}
+.ptab-id{font-family:var(--font-mono);font-size:11px;color:var(--text-3)}
+.proj-divider{height:1px;background:linear-gradient(90deg,transparent,var(--border-strong),transparent);margin:22px 0}
+.ps-meta{margin-bottom:20px}
+.ps-title{font-size:20px;font-weight:700;color:var(--text-1)}
+.ps-desc{font-size:13px;color:var(--text-2);margin-top:5px;line-height:1.5}
+.ps-path{font-family:var(--font-mono);font-size:11px;color:var(--text-3);margin-top:7px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}
+.stat-tile{padding:18px 18px 20px;border-radius:14px;border:1px solid var(--border);background:var(--card);backdrop-filter:blur(12px);transition:.18s var(--ease);position:relative;overflow:hidden}
+.stat-tile::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--aurora-grad);opacity:.55}
+.stat-tile:hover{transform:translateY(-2px);border-color:var(--border-strong);box-shadow:0 14px 34px rgba(0,0,0,.35)}
+.stat-label{font-size:12px;color:var(--text-2);letter-spacing:.3px}
+.stat-value{font-size:30px;font-weight:700;margin-top:9px;background:var(--aurora-grad);-webkit-background-clip:text;background-clip:text;color:transparent;font-variant-numeric:tabular-nums;line-height:1}
+.stat-value.muted{background:none;-webkit-background-clip:initial;background-clip:initial;color:var(--text-3);font-size:17px;font-weight:500}
+.stat-sub{font-size:11px;color:var(--text-3);margin-top:8px;font-family:var(--font-mono)}
+.ps-loading,.ps-empty{padding:46px;text-align:center;color:var(--text-3);font-size:13px}
 .btn{height:38px;padding:0 18px;border-radius:var(--radius-sm);border:1px solid transparent;font-weight:600;font-size:13px;cursor:pointer;transition:.18s var(--ease);font-family:var(--font-body);display:inline-flex;align-items:center;gap:8px}
+.btn svg{width:14px;height:14px;flex:none}
 .btn-primary{background:var(--aurora-grad);color:#06121b;box-shadow:0 8px 24px rgba(99,102,241,.35)}
 .btn-primary:hover{filter:brightness(1.08);transform:translateY(-1px)}
 .btn-ghost{background:var(--surface);border-color:var(--border);color:var(--text-1)}
@@ -230,11 +253,55 @@ input[type=file]{display:none}
 .select{width:100%;height:42px;border-radius:10px;background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--text-1);padding:0 12px;font-size:13px}
 .select:focus{outline:none;border-color:rgba(34,211,238,.5)}
 .test-row{display:flex;align-items:center;gap:12px;margin-top:14px}
-.test-msg{font-size:12px;font-family:var(--font-mono)}
+.test-msg{font-size:12px;font-family:var(--font-mono);line-height:1.7}
 .test-msg.ok{color:var(--ok)}
 .test-msg.err{color:var(--danger)}
+.test-msg span.ok{color:var(--ok)}
+.test-msg span.err{color:var(--danger)}
 .hint{font-size:11px;color:var(--text-3)}
 @keyframes fade{from{opacity:0}to{opacity:1}}
+/* 状态栏指示灯：默认绿（已连接），off=断开/不可达（真实连通检测结果驱动） */
+.statusbar .led{display:inline-block;width:8px;height:8px;border-radius:50%;background:#3ad07a;margin-right:6px;vertical-align:middle}
+.statusbar .led.off{background:#ff5c5c}
+/* 草稿审阅表格（对齐知识管理系统草稿审核） */
+.dt-wrap{margin-top:14px}
+.toolbar{display:flex;align-items:center;gap:14px;margin:6px 0 10px}
+.toolbar .selall{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text-2);cursor:pointer}
+.toolbar .cnt{font-size:12px;color:var(--text-3)}
+.dt{width:100%;border-collapse:separate;border-spacing:0;background:var(--card);border-radius:12px;overflow:visible;border:1px solid rgba(255,255,255,.06)}
+.dt thead th:first-child{border-top-left-radius:12px}
+.dt thead th:last-child{border-top-right-radius:12px}
+.dt tbody tr:last-child td:first-child{border-bottom-left-radius:12px}
+.dt tbody tr:last-child td:last-child{border-bottom-right-radius:12px}
+.dt th,.dt td{padding:10px 12px;text-align:left;font-size:13px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:top}
+.dt th{background:rgba(255,255,255,.04);color:var(--text-3);font-weight:600}
+.dt tr:hover{background:rgba(255,255,255,.03)}
+.dt td.ops,.dt th.ops{white-space:nowrap}
+.btn.danger{background:rgba(255,92,92,.14);color:#ff8a8a;border-color:rgba(255,92,92,.32)}
+.btn.danger:hover{background:rgba(255,92,92,.24)}
+.btn-sm{padding:5px 10px;font-size:12px;margin-right:4px}
+/* 工具栏批量操作按钮（精致化，避免廉价感） */
+.btn-soft{background:rgba(34,211,238,.12);border-color:rgba(34,211,238,.3);color:var(--aurora-1)}
+.btn-soft:hover{background:rgba(34,211,238,.2);border-color:rgba(34,211,238,.5);transform:translateY(-1px)}
+.btn-ghost-danger{background:var(--surface);border-color:rgba(255,92,92,.28);color:#ff8a8a}
+.btn-ghost-danger:hover{background:rgba(255,92,92,.14);border-color:rgba(255,92,92,.45);transform:translateY(-1px)}
+/* 草稿审阅 / 入库看板行内操作：紧凑图标按钮 + 玻璃质感 + tooltip（拒绝廉价文字按钮） */
+.row-ops{display:inline-flex;gap:6px;align-items:center}
+.act-btn{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:9px;border:1px solid var(--border);background:var(--surface);color:var(--text-2);cursor:pointer;transition:all .18s var(--ease);position:relative}
+.act-btn svg{width:15px;height:15px;display:block}
+.act-btn:hover{color:var(--text-1);border-color:var(--border-strong);background:var(--surface-2);transform:translateY(-1px)}
+.act-btn:active{transform:translateY(0) scale(.95)}
+.act-btn.edit:hover{color:var(--aurora-1);border-color:rgba(34,211,238,.45);background:rgba(34,211,238,.1)}
+.act-btn.commit{color:#06121b;background:var(--aurora-grad);border-color:transparent;box-shadow:0 6px 18px rgba(99,102,241,.3)}
+.act-btn.commit:hover{filter:brightness(1.08);box-shadow:0 8px 24px rgba(99,102,241,.45)}
+.act-btn.del:hover{color:#ff8a8a;border-color:rgba(255,92,92,.4);background:rgba(255,92,92,.12)}
+.act-btn[data-tip]::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%) translateY(4px);white-space:nowrap;background:#0b1220;color:var(--text-1);font-size:11px;padding:4px 9px;border-radius:7px;border:1px solid var(--border);box-shadow:0 8px 20px rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:all .16s var(--ease);z-index:5}
+.act-btn[data-tip]:hover::after{opacity:1;transform:translateX(-50%) translateY(0)}
+.dt td.ops{min-width:124px}
+/* 草稿编辑弹窗 */
+#draftEditModal .ta{width:100%;min-height:300px;background:#0b1220;color:#e6edf7;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;resize:vertical;box-sizing:border-box}
+#draftEditModal .inp{width:100%;background:#0b1220;color:#e6edf7;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:13px;box-sizing:border-box}
+.modal-foot{display:flex;justify-content:flex-end;gap:10px;padding-top:12px}
 </style>
 </head>
 <body>
@@ -247,8 +314,7 @@ input[type=file]{display:none}
       <div class="ps-menu" id="psMenu"></div>
     </div>
     <div class="spacer"></div>
-    <span class="chip"><span class="led"></span>本地 · 单用户</span>
-    <span class="chip" id="ksChip">知识系统 …</span>
+    <span class="chip" id="userChip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>本地 · 单用户</span>
     <button class="btn btn-primary" id="newProjBtn">+ 新建测试项目</button>
   </header>
 
@@ -325,7 +391,7 @@ input[type=file]{display:none}
     </section>
 
     <!-- 项目空间 -->
-    <section class="view" id="view-projects"><div class="view-head"><div><h1>项目空间</h1><p>单人本地多项目管理 · 知识系统 brains/&lt;id&gt; 隔离</p></div></div><div class="card-grid" id="projGrid"></div></section>
+    <section class="view" id="view-projects"><div class="view-head"><div><h1>项目空间</h1><p>单人本地多项目管理 · 知识系统 brains/&lt;id&gt; 隔离</p></div></div><div class="proj-tabs" id="projTabs"></div><div class="proj-divider"></div><div class="proj-summary" id="projSummary"></div></section>
 
     <!-- 草稿审阅 -->
     <section class="view" id="view-review"><div class="view-head"><div><h1>草稿审阅</h1><p>人工编辑与 AI 生成的草稿（human_edit），可单条入库</p></div></div><div id="reviewList"></div></section>
@@ -350,6 +416,25 @@ input[type=file]{display:none}
       <div id="backflowList"></div>
     </section>
 
+    <!-- 回测 -->
+    <section class="view" id="view-retest">
+      <div class="view-head"><div><h1>回测</h1><p>全量测试报告存档与回溯。上传的测试报告将沉淀为知识库 test-reports 文档，供团队回测复盘。</p></div></div>
+      <div class="upload-zone" style="max-width:480px;margin-bottom:20px">
+        <div class="upload-grid">
+          <label class="upload-card code">
+            <input type="file" id="retestFile" accept=".md,.txt,.json"/>
+            <div class="upload-icon">🧪</div>
+            <div class="upload-info">
+              <div class="upload-title">测试报告</div>
+              <div class="upload-desc">Markdown / JSON 测试报告</div>
+            </div>
+            <div class="upload-arrow">⬆</div>
+          </label>
+        </div>
+      </div>
+      <div id="retestList"></div>
+    </section>
+
     <!-- 入库看板 -->
     <section class="view" id="view-commit"><div class="view-head"><div><h1>入库看板</h1><p>双通路入库：批量确认（冲突检测+质量门控）/ 单条确认</p></div><button class="btn btn-primary" id="batchBtn">⬡ 批量确认入库</button></div><div id="commitList"></div></section>
 
@@ -357,7 +442,7 @@ input[type=file]{display:none}
     <section class="view" id="view-graph"><div class="view-head"><div><h1>知识图谱</h1><p>API 依赖图谱（函数调用关系）· 后台数据驱动自动刷新</p></div></div><div class="panel"><div class="graph-wrap" id="fullGraph" style="background:radial-gradient(circle at 50% 40%,rgba(168,85,247,.1),transparent 70%)"></div></div></section>
   </main>
 
-  <footer class="statusbar"><span class="s"><span class="led"></span>AI 平台</span><span class="s" id="ksStat"><span class="led"></span>知识系统</span><span class="s"><span class="led"></span><span id="ksChip">KS —</span></span><span class="s warn"><span class="led"></span><span id="conflictStat">0 冲突</span></span><span style="margin-left:auto" id="footProj">—</span></footer>
+  <footer class="statusbar"><span class="s" id="aiStat"><span class="led"></span>AI 平台</span><span class="s" id="ksStat"><span class="led"></span>知识系统</span><span class="s warn"><span class="led"></span><span id="conflictStat">0 冲突</span></span><span style="margin-left:auto" id="footProj">—</span></footer>
 </div>
 <div class="toast" id="toast"></div>
   <!-- 设置模块：左下角齿轮入口 -->
@@ -397,6 +482,21 @@ input[type=file]{display:none}
         <div class="test-row"><button class="btn btn-ghost btn-sm" id="setTest">测试连接</button><span class="test-msg" id="setTestMsg"></span></div>
       </div>
       <div class="modal-foot"><span class="hint" id="setHint">修改即时生效，无需重启服务</span><button class="btn btn-primary" id="setSave">保存设置</button></div>
+    </div>
+  </div>
+
+  <!-- 草稿编辑弹窗（草稿审阅页：编辑/保存人工编辑草稿，对齐知识管理系统草稿审核） -->
+  <div class="modal" id="draftEditModal">
+    <div class="modal-card">
+      <div class="modal-head"><h3>✎ 编辑草稿</h3><button class="modal-close" title="关闭">✕</button></div>
+      <div class="modal-body">
+        <input class="inp" id="draftEditTitle" placeholder="标题"/>
+        <textarea class="ta" id="draftEditContent" placeholder="正文内容（支持 Markdown）"></textarea>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="draftEditCancel">取消</button>
+        <button class="btn btn-primary" id="draftEditSave">保存</button>
+      </div>
     </div>
   </div>
 

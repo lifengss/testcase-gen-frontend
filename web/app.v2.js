@@ -18,7 +18,7 @@ function toast(msg, type = '') {
   const t = $('#toast'); t.textContent = msg; t.className = 'toast show ' + type;
   setTimeout(() => (t.className = 'toast ' + type), 2600);
 }
-function pickProject() { return state.project || 'default'; }
+function pickProject() { return state.project || 'testCaseGenerator'; }
 
 // ---- API 封装：自动注入当前 project ----
 async function api(method, path, { query = {}, body, form } = {}) {
@@ -41,6 +41,19 @@ async function api(method, path, { query = {}, body, form } = {}) {
   return { ok: r.ok, status: r.status, data };
 }
 
+// 顶部状态芯片
+// userChip：部署形态 / 用户身份。当前为单用户本地版（无鉴权），_user 留空 → 显示“单用户”占位；
+//           V2 接入认证后由登录态填充用户名，本芯片即作为“当前用户”指示，不再是无意义的静态绿点。
+let _user = '';
+let _ksBase = '';
+let summaryPid = '';
+function renderUserChip() {
+  const el = document.getElementById('userChip');
+  if (!el) return;
+  el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>本地 · ${_user || '单用户'}`;
+}
+// ksChip 已移除：连通性由底部状态栏 #ksStat 实测负责，顶部不再重复显示后端地址芯片。
+
 // ---- 项目 ----
 async function loadProjects() {
   const { data } = await api('GET', '/api/projects');
@@ -53,21 +66,38 @@ async function loadProjects() {
     el.onclick = () => setProject(p.id, p.name);
     menu.appendChild(el);
   });
-  if (!state.project || !list.find(p => p.id === state.project)) {
-    const pref = list.find(p => p.id === 'testCaseGenerator') || list[0];
-    if (pref) setProject(pref.id, pref.name);
-  }
-  // 项目空间卡片
-  const grid = $('#projGrid'); grid.innerHTML = '';
-  list.forEach(p => {
-    const card = document.createElement('div'); card.className = 'card';
-    card.innerHTML = `<div class="k">${p.id}</div><div class="v" style="font-size:18px">${p.name}</div><div class="d">${p.brainPath}</div>`;
-    card.onclick = () => setProject(p.id, p.name);
-    grid.appendChild(card);
-  });
+  // 始终同步当前项目（修复：刷新后 state.project 已预置，原逻辑仅在未命中时才调用 setProject，
+  // 导致顶部项目提示栏 #psName 一直停在「加载中…」，而页面内容其实已载入）
+  const cur = (state.project && list.find(p => p.id === state.project)) || list.find(p => p.id === 'testCaseGenerator') || list[0];
+  if (cur) setProject(cur.id, cur.name);
+
+  // 项目空间：标签 + 测试概要仪表盘
+  window.__projects = list;
+  if (!summaryPid) summaryPid = (state.project && list.some(p => p.id === state.project)) ? state.project : (list[0] && list[0].id);
+  renderProjTabs();
+  // 真实连通检测：知识系统健康 + AI 平台状态（状态栏指示反映实测结果，避免展示性虚假连通）
   const ks = await api('GET', '/api/health');
-  $('#ksChip').textContent = ks.ok ? '知识系统 已连接' : '知识系统 未连接';
-  $('#ksStat').innerHTML = `<span class="led"></span>知识系统 ${ks.ok ? '已连接' : '断开'}`;
+  $('#ksStat').innerHTML = `<span class="led${ks.ok ? '' : ' off'}"></span>知识系统 ${ks.ok ? '已连接' : '断开'}`;
+  renderUserChip();
+  updateAiStatus();
+}
+// AI 平台真实连通状态：调用 BFF /api/ai-status（探测 codebuddy CLI / openai endpoint），联动状态栏指示灯
+async function updateAiStatus() {
+  const el = document.getElementById('aiStat'); if (!el) return;
+  const led = el.querySelector('.led');
+  const setText = (txt) => {
+    el.childNodes.forEach(n => { if (n.nodeType === 3) n.nodeValue = ''; });
+    el.appendChild(document.createTextNode(txt));
+  };
+  try {
+    const r = await api('GET', '/api/ai-status');
+    const s = (r.data && r.data.data) || {};
+    if (led) { led.classList.remove('off'); if (!s.reachable) led.classList.add('off'); }
+    setText(' ' + (s.label ? ('AI 平台 · ' + s.label) : 'AI 平台'));
+  } catch (e) {
+    if (led) led.classList.add('off');
+    setText(' AI 平台 · 检测失败');
+  }
 }
 function setProject(id, name) {
   state.project = id; localStorage.setItem(LS_KEY, id);
@@ -75,16 +105,85 @@ function setProject(id, name) {
   $('#psName').textContent = name || id; $('#psId').textContent = id;
   $('#sidePid').textContent = id; $('#footProj').textContent = '本地多项目 · 知识闭环 V1.0 · ' + id;
   $$('.ps-item').forEach(x => x.classList.toggle('on', x.querySelector('.m').textContent.startsWith(id)));
+  summaryPid = id; renderProjTabs(); showProjectSummary(id);
   loadContext(); loadReview(); loadCommit(); loadBackflow(); loadScopes();
+}
+
+// 项目空间：标签栏（独立预览，点击仅展示该项目测试概要，不切换工作项目）
+function renderProjTabs() {
+  const tabs = $('#projTabs'); if (!tabs) return;
+  const list = window.__projects || [];
+  tabs.innerHTML = '';
+  list.forEach(p => {
+    const t = document.createElement('button');
+    t.className = 'ptab' + (p.id === summaryPid ? ' on' : '');
+    t.innerHTML = `<span class="ptab-name">${escapeHtml(p.name)}</span><span class="ptab-id">${escapeHtml(p.id)}</span>`;
+    t.onclick = () => { summaryPid = p.id; renderProjTabs(); showProjectSummary(p.id); };
+    tabs.appendChild(t);
+  });
+}
+// 项目测试概要：需求数（project-wiki 中 uploadType=prd/requirement）、测试用例数、自动化脚本数、
+// 质量规则数、缺陷经验数、知识页数；自动化覆盖率（分子=被脚本覆盖的用例数）为 V2 功能，本期显示「暂无数据」。
+async function showProjectSummary(pid) {
+  const box = $('#projSummary'); if (!box) return;
+  box.innerHTML = '<div class="ps-loading">加载测试概要…</div>';
+  const proj = (window.__projects || []).find(p => p.id === pid) || {};
+  try {
+    const [statsR, pagesR] = await Promise.all([
+      api('GET', '/api/brain/stats', { query: { project: pid } }),
+      api('GET', '/api/brain/pages', { query: { category: 'project-wiki', project: pid, limit: 1000 } })
+    ]);
+    const sb = (statsR && statsR.data) || {};
+    const cats = sb.data || {};
+    const cnt = (k) => (cats[k] && cats[k].count) || 0;
+    const testCases = cnt('test-cases');
+    const testScripts = cnt('test-scripts');
+    const qualityRules = cnt('quality-rules');
+    const defects = cnt('defect-experience');
+    const wikiTotal = cnt('project-wiki');
+    const pb = (pagesR && pagesR.data) || {};
+    const pages = Array.isArray(pb.data) ? pb.data : [];
+    const reqCount = pages.filter(p => { const ut = p.frontmatter && p.frontmatter.uploadType; return ut === 'prd' || ut === 'requirement'; }).length;
+    // 自动化覆盖率：分子=被自动化脚本覆盖的测试用例数（V2 统计功能，本期无此数据）
+    box.innerHTML = summaryHtml({ proj, reqCount, testCases, testScripts, qualityRules, defects, wikiTotal, coverage: '暂无数据' });
+  } catch (e) {
+    box.innerHTML = '<div class="ps-empty">暂无数据</div>';
+  }
+}
+function summaryHtml(m) {
+  const proj = m.proj || {};
+  const tile = (label, value, sub, muted) => `
+    <div class="stat-tile">
+      <div class="stat-label">${label}</div>
+      <div class="stat-value${muted ? ' muted' : ''}">${value}</div>
+      ${sub ? `<div class="stat-sub">${sub}</div>` : ''}
+    </div>`;
+  return `
+    <div class="ps-meta">
+      <div class="ps-title">${escapeHtml(proj.name || '—')}</div>
+      <div class="ps-desc">${escapeHtml(proj.description || '暂无项目描述')}</div>
+      <div class="ps-path">${escapeHtml(proj.brainPath || '')}</div>
+    </div>
+    <div class="stat-grid">
+      ${tile('需求数', m.reqCount, 'PRD / 需求列表')}
+      ${tile('测试用例数', m.testCases, 'test-cases')}
+      ${tile('自动化脚本数', m.testScripts, 'test-scripts')}
+      ${tile('自动化测试覆盖率', m.coverage, '覆盖用例 / 总用例 · V2 待接入', true)}
+      ${tile('质量规则数', m.qualityRules, 'quality-rules')}
+      ${tile('缺陷经验数', m.defects, 'defect-experience')}
+      ${tile('知识页数', m.wikiTotal, 'project-wiki')}
+    </div>`;
 }
 
 // ---- 导航 ----
 $$('.nav-item').forEach(n => n.onclick = () => {
+  const view = n.dataset.view;
   $$('.nav-item').forEach(x => x.classList.remove('active'));
   $$('.view').forEach(v => v.classList.remove('active'));
   n.classList.add('active');
-  $('#view-' + n.dataset.view).classList.add('active');
-  if (n.dataset.view === 'graph') loadGraph();
+  if (view) { const tgt = $('#view-' + view); if (tgt) tgt.classList.add('active'); }
+  if (view === 'graph') loadGraph();
+  if (view === 'retest') loadRetest();
 });
 $('#psBtn').onclick = e => { e.stopPropagation(); $('#psMenu').classList.toggle('open'); };
 document.addEventListener('click', () => $('#psMenu').classList.remove('open'));
@@ -108,7 +207,8 @@ async function loadScopes() {
     children: nodes.filter(n => n.type === 'function' && n.module === m.id)
       .map(f => ({ id: f.id, label: f.label, type: 'function' }))
   }));
-  if (!tree.length) tree = ['auth', 'order', 'payment', 'inventory'].map(x => ({ id: x, label: x, type: 'module', children: [] }));
+  // 新项目（尚未上传代码）无代码模块，保持空列表，不注入 Demo 示例模块以免误导
+  if (!tree.length) tree = [];
   state.scopeTree = tree;
   setScopeSelectAll(true); // 默认全选：让 explicit 真正装入全部模块 id，且全选勾选框与数据层对齐
   loadWikiModules(); // 并行抽取功能模块
@@ -165,7 +265,7 @@ function renderScopeNode(node, exp, expd, onToggle) {
 function renderScopeTree() {
   const root = $('#scopeTree');
   root.innerHTML = '';
-  if (!state.scopeTree.length) { root.innerHTML = '<div class="scope-hint">加载中…</div>'; return; }
+  if (!state.scopeTree.length) { root.innerHTML = '<div class="scope-hint">暂无代码模块，请先上传代码（压缩包或单文件）以解析 API 模块</div>'; return; }
   state.scopeTree.forEach(n => root.appendChild(renderScopeNode(n, explicit, expandedSet, (nd, c) => onScopeToggle(nd, c, explicit))));
 }
 function renderFuncTree() {
@@ -213,7 +313,8 @@ function collectFuncModules() {
 async function loadContext() {
   // 知识库页面统计（按 brain 分类）：历史用例=test-cases，自动化脚本=test-scripts，二者分别计数
   const stats = await api('GET', '/api/brain/stats');
-  const st = (stats && stats.data) || {};
+  // api() 把 JSON 体放在 stats.data；KS 体为 {success:true, data:{分类:{count}}}，故真实分类在 stats.data.data
+  const st = (stats && stats.data && stats.data.data) || {};
   $('#ctxTC').textContent = (st['test-cases'] && st['test-cases'].count) || 0;
   $('#ctxSC').textContent = (st['test-scripts'] && st['test-scripts'].count) || 0;
   const gd = await api('GET', '/api/graph-data');
@@ -398,17 +499,133 @@ function draftCard(d, withBatch) {
   el.innerHTML = `<div class="top"><span class="title">${d.title || '(无标题)'}</span><span class="badge badge-${d.source}">${srcLabel(d.source)} · ${d.type || ''}</span></div>
     ${extra}
     <div class="body">${escapeHtml((d.content || '').slice(0, 600))}</div>
-    <div class="actions"><button class="btn btn-ghost btn-sm" data-act="del">删除</button><button class="btn btn-primary btn-sm" data-act="commit">入库</button></div>`;
+    <div class="actions">
+      <button class="act-btn commit" data-act="commit" data-tip="入库" aria-label="入库"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></button>
+      <button class="act-btn del" data-act="del" data-tip="删除" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
+    </div>`;
   el.querySelector('[data-act=commit]').onclick = () => commitOne(d.id);
   el.querySelector('[data-act=del]').onclick = () => delDraft(d.id);
   return el;
 }
 async function loadReview() {
-  const r = await api('GET', '/api/drafts', { query: { source: 'human_edit', limit: 100 } });
+  // 草稿审阅：仅展示人工编辑草稿（source=human_edit），采用与知识管理系统一致的表格 + 复选框 + 编辑/删除/入库
+  const r = await api('GET', '/api/drafts', { query: { source: 'human_edit', limit: 200 } });
   const list = asArray(r.data);
-  const box = $('#reviewList'); box.innerHTML = '';
-  (list.length ? list : []).forEach(d => box.appendChild(draftCard(d)));
-  if (!list.length) box.innerHTML = '<div class="card"><div class="d">暂无人工编辑草稿</div></div>';
+  const box = $('#reviewList'); if (!box) return; box.innerHTML = '';
+  if (!list.length) { box.innerHTML = '<div class="card"><div class="d">暂无人工编辑草稿</div></div>'; return; }
+  const wrap = document.createElement('div'); wrap.className = 'dt-wrap';
+  wrap.innerHTML = `
+    <div class="toolbar">
+      <label class="selall"><input type="checkbox" id="selAll"/> 全选</label>
+      <button class="btn btn-sm btn-soft" data-act="batch-commit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> 批量入库</button>
+      <button class="btn btn-sm btn-ghost-danger" data-act="batch-delete">批量删除</button>
+      <span class="cnt" id="selCnt"></span>
+    </div>
+    <table class="dt">
+      <thead><tr><th></th><th>标题</th><th>类型</th><th>来源</th><th>状态</th><th>更新时间</th><th class="ops">操作</th></tr></thead>
+      <tbody></tbody>
+    </table>`;
+  box.appendChild(wrap);
+  const tb = wrap.querySelector('tbody');
+  list.forEach(d => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="checkbox" class="row-sel" value="${d.id}"/></td>
+      <td>${escapeHtml(d.title || '(无标题)')}</td>
+      <td>${escapeHtml(d.type || '')}</td>
+      <td>${escapeHtml(d.source || '')}</td>
+      <td>${escapeHtml(d.status || '')}</td>
+      <td>${escapeHtml(String(d.updated_at || d.created_at || '').slice(0, 19).replace('T', ' '))}</td>
+      <td class="ops">
+        <div class="row-ops">
+          <button class="act-btn edit" data-act="edit" data-id="${d.id}" data-tip="编辑" aria-label="编辑">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </button>
+          <button class="act-btn commit" data-act="commit" data-id="${d.id}" data-tip="入库" aria-label="入库">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </button>
+          <button class="act-btn del" data-act="del" data-id="${d.id}" data-tip="删除" aria-label="删除">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+          </button>
+        </div>
+      </td>`;
+    tb.appendChild(tr);
+  });
+  const selAll = wrap.querySelector('#selAll');
+  const rows = wrap.querySelectorAll('.row-sel');
+  const syncCnt = () => { const n = wrap.querySelectorAll('.row-sel:checked').length; const c = wrap.querySelector('#selCnt'); if (c) c.textContent = n ? ('已选 ' + n + ' 项') : ''; };
+  selAll.onchange = e => { rows.forEach(c => c.checked = e.target.checked); syncCnt(); };
+  rows.forEach(c => c.onchange = syncCnt);
+  wrap.querySelector('[data-act="batch-delete"]').onclick = () => batchDeleteDrafts(wrap);
+  wrap.querySelector('[data-act="batch-commit"]').onclick = () => batchCommitDrafts(wrap);
+  wrap.querySelectorAll('[data-act="edit"]').forEach(b => b.onclick = () => openDraftEdit(b.dataset.id));
+  wrap.querySelectorAll('[data-act="commit"]').forEach(b => b.onclick = () => commitOne(b.dataset.id));
+  wrap.querySelectorAll('[data-act="del"]').forEach(b => b.onclick = () => delDraft(b.dataset.id));
+}
+// 批量删除选中的草稿
+async function batchDeleteDrafts(wrap) {
+  const ids = [...wrap.querySelectorAll('.row-sel:checked')].map(c => c.value);
+  if (!ids.length) { toast('请先勾选要删除的草稿', 'err'); return; }
+  if (!confirm('确认删除 ' + ids.length + ' 条草稿？此操作不可恢复。')) return;
+  let ok = 0;
+  for (const id of ids) {
+    try { await api('DELETE', '/api/drafts/' + id, { query: { project: pickProject() } }); ok++; }
+    catch (e) { console.warn('删除草稿失败', id, e); }
+  }
+  toast('已删除 ' + ok + '/' + ids.length + ' 条', 'ok');
+  loadReview(); loadCommit();
+}
+// 批量入库选中的草稿（仅提交勾选项，复用 KS 的 batch-commit 冲突/质量门控）
+async function batchCommitDrafts(wrap) {
+  const ids = [...wrap.querySelectorAll('.row-sel:checked')].map(c => c.value);
+  if (!ids.length) { toast('请先勾选要入库的草稿', 'err'); return; }
+  const btn = wrap.querySelector('[data-act="batch-commit"]');
+  if (btn) { btn.disabled = true; btn.style.opacity = .6; }
+  try {
+    const { ok, data } = await api('POST', '/api/drafts/batch-commit', { body: { ids } });
+    if (ok && data.data) {
+      const c = data.data;
+      const committed = (c.committed && c.committed.length) || 0;
+      const rejected = (c.rejected && c.rejected.length) || 0;
+      const conflicts = (c.conflicts && c.conflicts.length) || 0;
+      toast(`批量入库完成：入库 ${committed} 条` + (conflicts ? `，冲突 ${conflicts} 条` : '') + (rejected ? `，拒绝 ${rejected} 条` : ''), rejected ? 'err' : 'ok');
+      loadReview(); loadCommit(); loadContext();
+    } else {
+      toast('批量入库失败：' + (data.error || ''), 'err');
+    }
+  } catch (e) {
+    toast('批量入库异常：' + e.message, 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+  }
+}
+// 编辑草稿：弹窗读写内容，保存走 PUT /api/drafts/:id
+let _editDraftId = null;
+function openDraftEdit(id) {
+  _editDraftId = id;
+  api('GET', '/api/drafts/' + id).then(r => {
+    const d = (r.data && r.data.data) ? r.data.data : (r.data || {});
+    const obj = Array.isArray(d) ? d[0] : d;
+    document.getElementById('draftEditTitle').value = obj.title || '';
+    document.getElementById('draftEditContent').value = obj.content || '';
+    document.getElementById('draftEditModal').classList.add('open');
+  }).catch(e => toast('读取草稿失败: ' + e.message, 'err'));
+}
+function bindDraftEditModal() {
+  const modal = document.getElementById('draftEditModal');
+  if (!modal) return;
+  const close = () => modal.classList.remove('open');
+  const closeBtn = modal.querySelector('.modal-close'); if (closeBtn) closeBtn.onclick = close;
+  const cancelBtn = modal.querySelector('#draftEditCancel'); if (cancelBtn) cancelBtn.onclick = close;
+  const saveBtn = modal.querySelector('#draftEditSave');
+  if (saveBtn) saveBtn.onclick = async () => {
+    if (!_editDraftId) return;
+    const title = document.getElementById('draftEditTitle').value;
+    const content = document.getElementById('draftEditContent').value;
+    const { ok, error } = await api('PUT', '/api/drafts/' + _editDraftId, { body: { title, content } });
+    if (ok) { toast('草稿已保存', 'ok'); close(); loadReview(); }
+    else toast('保存失败: ' + (error || ''), 'err');
+  };
 }
 async function loadCommit() {
   const r = await api('GET', '/api/drafts', { query: { limit: 200 } });
@@ -439,6 +656,26 @@ $('#batchBtn').onclick = async () => {
   } else toast('批量入库失败：' + (data.error || ''), 'err');
 };
 
+// ---- 回测（测试报告存档与回溯）----
+async function loadRetest() {
+  const r = await api('GET', '/api/brain/pages', { query: { category: 'test-reports' } });
+  const list = asArray(r.data);
+  const box = $('#retestList'); if (!box) return; box.innerHTML = '';
+  if (!list.length) { box.innerHTML = '<div class="card"><div class="d">暂无测试报告，请上传 Markdown/JSON 测试报告</div></div>'; return; }
+  list.forEach(p => {
+    const el = document.createElement('div'); el.className = 'card';
+    el.innerHTML = `<div class="h">${escapeHtml(p.title || p.slug || '')}</div><div class="d">${escapeHtml((p.content || '').slice(0, 240))}</div>`;
+    box.appendChild(el);
+  });
+}
+$('#retestFile').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const form = new FormData(); form.append('file', f); form.append('type', 'test-report'); form.append('project', pickProject());
+  const { ok, data } = await api('POST', '/api/source-upload', { form });
+  if (ok) { toast('测试报告已入库：' + ((data.data && data.data.slug) || f.name), 'ok'); loadRetest(); }
+  else toast('上传失败：' + (data.error || ''), 'err');
+};
+
 // ---- 执行回流 ----
 async function loadBackflow() {
   const r = await api('GET', '/api/drafts', { query: { source: 'exec_backflow', limit: 100 } });
@@ -450,7 +687,7 @@ async function loadBackflow() {
 $('#reportFile').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   const content = await f.text();
-  const { ok } = await api('POST', '/api/drafts', { body: { source: 'exec_backflow', type: 'defect_rule', title: '执行回流：' + f.name, content, metadata: { failureType: 'report_parse', fileName: f.name } } });
+  const { ok } = await api('POST', '/api/drafts', { body: { source: 'exec_backflow', type: 'defect_experience', title: '执行回流：' + f.name, content, metadata: { failureType: 'report_parse', fileName: f.name } } });
   if (ok) { toast('执行报告已解析并生成缺陷草稿', 'ok'); loadBackflow(); loadCommit(); }
   else toast('回流失败', 'err');
 };
@@ -982,9 +1219,10 @@ function fillSettings(cfg) {
 async function loadSettings() {
   const { ok, data } = await api('GET', '/api/settings');
   if (ok && data) {
-    fillSettings(data);
-    const ksChip = document.getElementById('ksChip');
-    if (ksChip) ksChip.textContent = 'KS ' + ((data.ks && data.ks.apiBase) || '—');
+    // api() 返回的是完整响应信封 {success,data:{ks,ai}}，fillSettings 需要的是内层 payload
+    const payload = data.data && typeof data.data === 'object' ? data.data : data;
+    fillSettings(payload);
+    _ksBase = (payload.ks && payload.ks.apiBase) || '';
   }
 }
 function openSettings() { loadSettings(); setTestMsg.textContent = ''; setTestMsg.className = 'test-msg'; settingsModal.classList.add('open'); }
@@ -999,10 +1237,29 @@ if (cbBuiltin) cbBuiltin.addEventListener('change', () => { syncProviderUI(); if
 if (cbCustom) cbCustom.addEventListener('change', syncProviderUI);
 const setTest = document.getElementById('setTest');
 if (setTest) setTest.addEventListener('click', async () => {
-  setTestMsg.textContent = '连接中…'; setTestMsg.className = 'test-msg';
-  const { ok, data } = await api('POST', '/api/settings/test', { body: { ksApiBase: setKsApi.value.trim() } });
-  if (ok && data && data.reachable) { setTestMsg.textContent = '✓ KS 可达'; setTestMsg.className = 'test-msg ok'; }
-  else { setTestMsg.textContent = '✗ ' + ((data && data.error) || '不可达'); setTestMsg.className = 'test-msg err'; }
+  setTestMsg.innerHTML = '连接中…'; setTestMsg.className = 'test-msg';
+  const p = setAiProvider.value;
+  const useCustom = (p === 'codebuddy') && cbCustom.checked;
+  const aiPayload = {
+    provider: p,
+    useCustomModel: useCustom,
+    endpoint: (p === 'openai' || useCustom) ? setAiEndpoint.value.trim() : '',
+    apiKey: (p === 'openai' || useCustom) ? setAiKey.value.trim() : '',
+    model: (p === 'codebuddy') ? (useCustom ? setAiModel.value.trim() : cbModel.value) : setAiModel.value.trim(),
+  };
+  const { ok, data } = await api('POST', '/api/settings/test', { body: { ksApiBase: setKsApi.value.trim(), ai: aiPayload } });
+  const body = data && data.data && typeof data.data === 'object' ? data.data : (data || {});
+  const ks = body.ks || {};
+  const ai = body.ai || {};
+  const line = (good, okTxt, badTxt) => `<span class="${good ? 'ok' : 'err'}">${good ? '✓' : '✗'} ${good ? okTxt : badTxt}</span>`;
+  const ksTxt = ks.reachable
+    ? line(true, `KS 可达 (HTTP ${ks.status || ''}${ks.latencyMs != null ? ' · ' + ks.latencyMs + 'ms' : ''})`)
+    : line(false, '', `KS 不可达：${ks.error || '无响应'}`);
+  const aiTxt = ai.reachable
+    ? line(true, `AI 平台可达 (${ai.label || ai.provider})`)
+    : line(false, '', `AI 平台不可达：${(ai.label ? ai.label + ' · ' : '') + (ai.detail || '未配置')}`);
+  setTestMsg.innerHTML = ksTxt + '<br>' + aiTxt;
+  setTestMsg.className = 'test-msg';
 });
 const setSave = document.getElementById('setSave');
 if (setSave) setSave.addEventListener('click', async () => {
@@ -1024,9 +1281,9 @@ if (setSave) setSave.addEventListener('click', async () => {
   };
   const { ok, data } = await api('PUT', '/api/settings', { body: payload });
   if (ok && data) {
-    fillSettings(data);
-    const ksChip = document.getElementById('ksChip');
-    if (ksChip) ksChip.textContent = 'KS ' + ((data.ks && data.ks.apiBase) || '—');
+    const saved = data.data && typeof data.data === 'object' ? data.data : data;
+    fillSettings(saved);
+    _ksBase = (saved.ks && saved.ks.apiBase) || '';
     toast('设置已保存（即时生效，无需重启）', 'ok');
     closeSettings();
   } else {
@@ -1040,5 +1297,6 @@ if (setSave) setSave.addEventListener('click', async () => {
   const r = await api('GET', '/api/projects');
   window.__projects = (r.data && r.data.data && r.data.data.projects) || [];
   await loadProjects();
+  bindDraftEditModal();
   await loadContext(); await loadReview(); await loadCommit(); await loadBackflow(); await loadScopes();
 })();

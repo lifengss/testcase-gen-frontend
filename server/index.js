@@ -19,6 +19,8 @@ const { execSync } = require('child_process');
 const PORT = Number(process.env.PORT || 4123);
 // 运行时配置中心：以环境变量为种子，支持前端「设置」模块热修改（无需重启）
 const cfg = require('./config');
+// 多项目隔离统一默认项目：generate / source-upload / 代理透传均使用同一默认值，避免默认 project 不一致
+const DEFAULT_PROJECT = process.env.DEFAULT_PROJECT || 'testCaseGenerator';
 
 const app = express();
 app.use(cors());
@@ -37,6 +39,8 @@ async function ksCall(method, apiPath, { query, body, form } = {}) {
   if (query) {
     const sp = new URLSearchParams();
     for (const [k, v] of Object.entries(query)) if (v !== undefined && v !== null) sp.set(k, v);
+    // 多项目隔离：GET 缺省 project 时注入统一默认项目（与前端/后端默认值一致）
+    if (method === 'GET' && !sp.has('project')) sp.set('project', DEFAULT_PROJECT);
     if ([...sp.keys()].length) url += '?' + sp.toString();
   }
   const opts = { method, headers: {} };
@@ -120,7 +124,7 @@ app.post('/api/source-upload', memUpload.single('file'), async (req, res) => {
     }
     if (req.body.content) form.append('content', req.body.content);
     form.append('type', req.body.type || (req.file ? 'code' : 'quality_rule'));
-    form.append('project', req.body.project || 'default');
+    form.append('project', req.body.project || DEFAULT_PROJECT);
     if (req.body.note) form.append('note', req.body.note);
     const { status, data } = await ksCall('POST', '/api/source-upload', { form });
     res.status(status).json(data);
@@ -137,14 +141,25 @@ async function harvestContext(project) {
   const titles = { testCases: [], qualityRules: [], wikiPages: [] };
   const safe = async (fn) => { try { return await fn(); } catch (e) { return null; } };
 
+  // 权威计数取自 /api/brain/stats：按分类全量统计、私有+共享去重，不受分页 limit 截断，
+  // 与侧栏“历史用例”及知识库概览口径完全一致。
+  const bs = await safe(() => ksCall('GET', '/api/brain/stats', { query: { project } }));
+  if (bs && bs.data && bs.data.data) {
+    const d = bs.data.data;
+    stats.testCases = (d['test-cases'] && d['test-cases'].count) || 0;
+    stats.qualityRules = (d['quality-rules'] && d['quality-rules'].count) || 0;
+    stats.wikiPages = (d['project-wiki'] && d['project-wiki'].count) || 0;
+  }
+
+  // 标题仅用于生成提示词展示，取前若干条即可（分页不计入总数）
   const tc = await safe(() => ksCall('GET', '/api/brain/pages', { query: { category: 'test-cases', project, limit: 50 } }));
-  if (tc && tc.data && tc.data.data) { stats.testCases = tc.data.data.length; titles.testCases = tc.data.data.map(p => p.title); }
+  if (tc && tc.data && tc.data.data) titles.testCases = tc.data.data.map(p => p.title);
 
   const qr = await safe(() => ksCall('GET', '/api/brain/pages', { query: { category: 'quality-rules', project, limit: 50 } }));
-  if (qr && qr.data && qr.data.data) { stats.qualityRules = qr.data.data.length; titles.qualityRules = qr.data.data.map(p => p.title); }
+  if (qr && qr.data && qr.data.data) titles.qualityRules = qr.data.data.map(p => p.title);
 
   const pw = await safe(() => ksCall('GET', '/api/brain/pages', { query: { category: 'project-wiki', project, limit: 50 } }));
-  if (pw && pw.data && pw.data.data) { stats.wikiPages = pw.data.data.length; titles.wikiPages = pw.data.data.map(p => p.title); }
+  if (pw && pw.data && pw.data.data) titles.wikiPages = pw.data.data.map(p => p.title);
 
   const gd = await safe(() => ksCall('GET', '/api/graph-data', { query: { project } }));
   if (gd && gd.data && gd.data.data) { stats.graphNodes = (gd.data.data.nodes || []).length; stats.graphEdges = (gd.data.data.edges || []).length; }
@@ -479,16 +494,84 @@ app.put('/api/settings', (req, res) => {
   }
 });
 
-// 测试连接：验证 KS API 可达性（可选带 ksApiBase 覆盖）
-app.post('/api/settings/test', async (req, res) => {
-  const base = (req.body && req.body.ksApiBase) || cfg.get().ks.apiBase;
+// ---- 连通性探测辅助 ----
+// CodeBuddy 通道：探测 CLI 是否安装可用（liveness）。注意此探测不验证登录态/模型授权，
+// 仅确认 harness CLI 可达；真正的模型调用在生成时由 codebuddy-client 发起。
+function testCodeBuddy() {
   try {
-    const r = await fetch(base.replace(/\/$/, '') + '/api/health', { method: 'GET' });
-    const j = await r.json().catch(() => ({}));
-    res.json({ success: r.ok, reachable: r.ok, status: r.status, data: j });
+    const v = execSync('codebuddy --version', { timeout: 6000, windowsHide: true, encoding: 'utf8' });
+    return { provider: 'codebuddy', configured: true, reachable: true, label: 'CodeBuddy CLI 可达', detail: 'codebuddy ' + String(v).trim().split('\n')[0].slice(0, 24) };
   } catch (e) {
-    res.json({ success: false, reachable: false, error: e.message });
+    return { provider: 'codebuddy', configured: false, reachable: false, label: 'CodeBuddy 不可达', detail: String(e.message || e).split('\n')[0].slice(0, 120) };
   }
+}
+// OpenAI 兼容通道：发起一次极小 chat 请求（max_tokens=5），真实验证 endpoint 可达 + 鉴权有效
+async function testOpenAI(ai) {
+  const endpoint = (ai.endpoint || '').trim();
+  const apiKey = (ai.apiKey || '').trim();
+  const model = (ai.model || '').trim();
+  if (!endpoint) return { provider: 'openai', configured: false, reachable: false, label: '未配置 Endpoint', detail: 'AI 平台未配置 API Endpoint' };
+  const t0 = Date.now();
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({ model: model || 'gpt-4o-mini', messages: [{ role: 'system', content: 'ping' }, { role: 'user', content: 'hi' }], max_tokens: 5 }),
+    });
+    const latencyMs = Date.now() - t0;
+    if (resp.ok) {
+      const j = await resp.json().catch(() => ({}));
+      const ok = !!(j.choices && j.choices[0] && j.choices[0].message);
+      return { provider: 'openai', configured: true, reachable: ok, label: ok ? 'OpenAI 兼容可达' : 'OpenAI 响应异常', detail: ok ? `HTTP ${resp.status} · ${latencyMs}ms` : '响应缺少 choices 字段', latencyMs };
+    }
+    const txt = await resp.text().catch(() => '');
+    return { provider: 'openai', configured: true, reachable: false, label: `OpenAI 不可达 (HTTP ${resp.status})`, detail: txt.slice(0, 160), latencyMs };
+  } catch (e) {
+    return { provider: 'openai', configured: true, reachable: false, label: 'OpenAI 不可达', detail: String(e.message || e).slice(0, 160), latencyMs: Date.now() - t0 };
+  }
+}
+// 统一 AI 平台连通性判定（状态栏与测试连接共用，单一数据源）
+async function checkAiStatus(aiCfg) {
+  const provider = (aiCfg && aiCfg.provider) || 'none';
+  if (provider === 'none') return { provider: 'none', configured: false, reachable: false, label: '未启用 AI 平台' };
+  if (provider === 'codebuddy') return testCodeBuddy();
+  if (provider === 'openai') return await testOpenAI(aiCfg);
+  return { provider, configured: true, reachable: false, label: provider, detail: '未知供应商' };
+}
+
+// 测试连接：同时验证 KS API 可达性 与 AI 平台连通性
+// 可选带 ksApiBase / ai 覆盖（来自设置表单，便于在保存前验证当前填写值）
+app.post('/api/settings/test', async (req, res) => {
+  const ksBase = (req.body && req.body.ksApiBase) || cfg.get().ks.apiBase;
+  const aiOverride = (req.body && req.body.ai) || null;
+  const aiCfg = aiOverride ? Object.assign({}, cfg.get().ai, aiOverride) : cfg.get().ai;
+  // KS 探测
+  const ksT0 = Date.now();
+  let ks;
+  try {
+    const r = await fetch(ksBase.replace(/\/$/, '') + '/api/health', { method: 'GET' });
+    ks = { reachable: r.ok, status: r.status, latencyMs: Date.now() - ksT0 };
+  } catch (e) {
+    ks = { reachable: false, error: String(e.message || e).slice(0, 160), latencyMs: Date.now() - ksT0 };
+  }
+  // AI 探测
+  const ai = await checkAiStatus(aiCfg);
+  res.json({ success: true, data: { ks, ai } });
+});
+
+// AI 平台真实连通状态（供前端状态栏指示，避免「已连接」展示性虚假连通）
+// 30s 缓存，避免每次轮询都触发 CLI/网络探测
+let _aiStatusCache = null;
+let _aiStatusCacheAt = 0;
+app.get('/api/ai-status', async (req, res) => {
+  const now = Date.now();
+  if (_aiStatusCache && now - _aiStatusCacheAt < 30 * 1000) {
+    return res.json({ success: true, data: _aiStatusCache });
+  }
+  const out = await checkAiStatus(cfg.get().ai);
+  _aiStatusCache = out;
+  _aiStatusCacheAt = now;
+  res.json({ success: true, data: out });
 });
 
 // 通配代理：将未单独声明的 /api/* 请求透传到知识系统，直接复用 KS /api/* 端点
@@ -496,7 +579,12 @@ app.post('/api/settings/test', async (req, res) => {
 // 注意：必须放在所有具体 /api 路由之后，避免抢占 /api/generate 等具体处理器
 app.all('/api/*', async (req, res) => {
   try {
-    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    let qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    // 多项目隔离：GET 代理若未显式带 project，注入统一默认 project（与前端/后端默认值一致）
+    if (req.method === 'GET') {
+      const params = new URLSearchParams(qs.replace(/^\?/, ''));
+      if (!params.has('project')) { params.set('project', DEFAULT_PROJECT); qs = '?' + params.toString(); }
+    }
     const url = cfg.get().ks.apiBase + req.path + qs;
     const body = ['GET', 'HEAD'].includes(req.method) || !req.body
       ? undefined

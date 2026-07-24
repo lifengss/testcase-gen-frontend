@@ -28,3 +28,8 @@ verify-out.txt
 
 # ===== 本地 Agent 数据 =====
 .codebuddy/
+
+# Python test cache
+tests/__pycache__/
+# Test reports (generated)
+tests/full-suite/report/
