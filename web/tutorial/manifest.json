@@ -1,0 +1,20 @@
+{
+  "title": "TestGen 知识管理系统 · 使用教程",
+  "systemVersion": "1.0.0",
+  "minor": 0,
+  "version": "1.0",
+  "updatedAt": "2026-07-24",
+  "chapters": [
+    { "id": "overview", "title": "概览与快速开始", "cases": ["用默认项目跑通最小闭环"] },
+    { "id": "projects", "title": "项目空间与多项目管理", "cases": ["为订单系统新建独立项目"] },
+    { "id": "upload", "title": "上传材料与知识沉淀", "cases": ["上传 PRD 看 Wiki 与功能模块生成"] },
+    { "id": "generator", "title": "生成中心：智能生成测试用例", "cases": ["为 auth 模块生成冒烟用例"] },
+    { "id": "review", "title": "草稿审阅与编辑", "cases": ["修改用例触发质量规则沉淀"] },
+    { "id": "commit", "title": "入库看板：知识沉淀与冲突处理", "cases": ["批量确认入库并解决冲突"] },
+    { "id": "backflow", "title": "执行回流：从失败到知识", "cases": ["上传失败报告生成缺陷草稿"] },
+    { "id": "retest", "title": "回测：测试报告存档与复盘", "cases": ["存档一轮回归报告"] },
+    { "id": "graph", "title": "知识图谱：可视化依赖", "cases": ["定位模块上下游依赖"] },
+    { "id": "settings", "title": "系统设置：KS 与 AI 平台对接", "cases": ["配置自有模型并验证连通"] },
+    { "id": "version", "title": "版本说明与最佳实践", "cases": [] }
+  ]
+}

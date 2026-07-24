@@ -184,9 +184,77 @@ $$('.nav-item').forEach(n => n.onclick = () => {
   if (view) { const tgt = $('#view-' + view); if (tgt) tgt.classList.add('active'); }
   if (view === 'graph') loadGraph();
   if (view === 'retest') loadRetest();
+  if (view === 'tutorial') loadTutorial();
 });
 $('#psBtn').onclick = e => { e.stopPropagation(); $('#psMenu').classList.toggle('open'); };
 document.addEventListener('click', () => $('#psMenu').classList.remove('open'));
+
+// ---- 使用教程（版本化：大版本随系统，小版本独立） ----
+let tutState = { manifest: null };
+async function loadTutorial() {
+  try {
+    if (!tutState.manifest) {
+      const res = await fetch('tutorial/manifest.json');
+      if (!res.ok) throw new Error('manifest 加载失败 (' + res.status + ')');
+      tutState.manifest = await res.json();
+    }
+    const m = tutState.manifest;
+    const verEl = $('#tutVersion');
+    if (verEl) verEl.textContent = `${m.title} · 教程 v${m.version}（随系统 v${m.systemVersion}）· 更新于 ${m.updatedAt}`;
+    renderTutToc(m);
+    openTutChapter(m.chapters[0] && m.chapters[0].id);
+  } catch (e) {
+    const c = $('#tutContent'); if (c) c.innerHTML = `<div class="ps-empty">教程加载失败：${escapeHtml(e.message)}</div>`;
+  }
+}
+function renderTutToc(m) {
+  const toc = $('#tutToc'); if (!toc) return;
+  let html = '';
+  m.chapters.forEach((ch, i) => {
+    html += `<div class="tut-toc-h">第 ${i} 章</div>`;
+    html += `<a data-ch="${ch.id}"><span class="n">${i}</span>${escapeHtml(ch.title)}</a>`;
+  });
+  toc.innerHTML = html;
+  $$('#tutToc a').forEach(a => a.onclick = () => openTutChapter(a.dataset.ch));
+}
+async function openTutChapter(id) {
+  const m = tutState.manifest; if (!m) return;
+  const idx = m.chapters.findIndex(c => c.id === id);
+  const ch = m.chapters[idx];
+  $$('#tutToc a').forEach(a => a.classList.toggle('on', a.dataset.ch === id));
+  const content = $('#tutContent');
+  content.innerHTML = '<div class="ps-loading">正在加载…</div>';
+  try {
+    const res = await fetch(`tutorial/chapters/${id}.md`);
+    if (!res.ok) throw new Error('章节加载失败 (' + res.status + ')');
+    const md = await res.text();
+    const body = renderTutorialMarkdown(md);
+    const prev = idx > 0 ? m.chapters[idx - 1] : null;
+    const next = idx < m.chapters.length - 1 ? m.chapters[idx + 1] : null;
+    content.innerHTML = `<div class="md">${body}</div>` +
+      `<div class="tut-nav">` +
+      (prev ? `<a class="btn ghost" data-ch="${prev.id}">← ${escapeHtml(prev.title)}</a>` : `<span></span>`) +
+      (next ? `<a class="btn ghost" data-ch="${next.id}">${escapeHtml(next.title)} →</a>` : `<span></span>`) +
+      `</div>` +
+      `<div class="tut-ver">教程 v${m.version} · 系统 v${m.systemVersion} · 更新于 ${m.updatedAt}</div>`;
+    $$('#tutContent [data-ch]').forEach(a => a.onclick = () => openTutChapter(a.dataset.ch));
+  } catch (e) {
+    content.innerHTML = `<div class="ps-empty">${escapeHtml(e.message)}</div>`;
+  }
+}
+// 教程 Markdown 渲染：在共享 renderMarkdown 之上单独处理图片 ![](url)，避免与链接混淆、并被 HTML 转义
+function renderTutorialMarkdown(src) {
+  const IMG = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g;
+  let out = '', last = 0, mt;
+  while ((mt = IMG.exec(src)) !== null) {
+    if (mt.index > last) out += renderMarkdown(src.slice(last, mt.index));
+    const alt = mt[1], url = mt[2], cap = mt[3] || '';
+    out += `<img class="tut-img" src="${escapeHtml(url)}" alt="${escapeHtml(alt)}"/>` + (cap ? `<div class="tut-cap">${escapeHtml(cap)}</div>` : '');
+    last = IMG.lastIndex;
+  }
+  if (last < src.length) out += renderMarkdown(src.slice(last));
+  return out;
+}
 
 // ---- 生成配置交互 ----
 function bindSeg(id){ $$(`#${id} button`).forEach(b => b.onclick = () => { $$(`#${id} button`).forEach(x=>x.classList.remove('on')); b.classList.add('on'); }); }

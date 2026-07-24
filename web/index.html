@@ -302,6 +302,21 @@ input[type=file]{display:none}
 #draftEditModal .ta{width:100%;min-height:300px;background:#0b1220;color:#e6edf7;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;resize:vertical;box-sizing:border-box}
 #draftEditModal .inp{width:100%;background:#0b1220;color:#e6edf7;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:13px;box-sizing:border-box}
 .modal-foot{display:flex;justify-content:flex-end;gap:10px;padding-top:12px}
+/* ---- 使用教程 ---- */
+.tut-wrap{display:grid;grid-template-columns:248px 1fr;gap:24px;align-items:start}
+.tut-toc{position:sticky;top:0;align-self:start;max-height:calc(100vh - 120px);overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+.tut-toc .tut-toc-h{font-size:10px;letter-spacing:1.2px;color:var(--text-3);text-transform:uppercase;margin:14px 8px 6px}
+.tut-toc .tut-toc-h:first-child{margin-top:2px}
+.tut-toc a{display:block;padding:8px 10px;border-radius:8px;color:var(--text-2);font-size:13px;cursor:pointer;transition:.15s var(--ease);text-decoration:none}
+.tut-toc a:hover{background:var(--surface-2);color:var(--text-1)}
+.tut-toc a.on{background:var(--surface-2);color:var(--text-1);box-shadow:inset 0 0 0 1px var(--border-strong)}
+.tut-toc a .n{font-family:var(--font-mono);color:var(--aurora-1);margin-right:6px}
+.tut-content{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px;min-height:60vh}
+.tut-content .md h1:first-child{margin-top:0}
+.tut-img{max-width:100%;border:1px solid var(--border);border-radius:12px;margin:14px 0;display:block;background:#0b1220}
+.tut-cap{font-size:12px;color:var(--text-3);margin:-6px 0 14px;text-align:center}
+.tut-nav{display:flex;justify-content:space-between;gap:12px;margin-top:32px;padding-top:18px;border-top:1px solid var(--border)}
+.tut-ver{font-size:11px;color:var(--text-3);font-family:var(--font-mono);margin-top:10px}
 </style>
 </head>
 <body>
@@ -327,6 +342,8 @@ input[type=file]{display:none}
     <div class="nav-group">知识</div>
     <div class="nav-item" data-view="commit"><span class="ico">⬡</span>入库看板</div>
     <div class="nav-item" data-view="graph"><span class="ico">⌾</span>知识图谱</div>
+    <div class="nav-group">帮助</div>
+    <div class="nav-item" data-view="tutorial"><span class="ico">❖</span>使用教程</div>
     <div class="nav-sep"><b>当前项目</b> <span id="sidePid">—</span><br/><span id="sideStat">缓冲 0 · 已入库 0</span></div>
     <div class="nav-item" id="gearNav"><i>⚙</i>系统设置</div>
   </aside>
@@ -440,7 +457,20 @@ input[type=file]{display:none}
 
     <!-- 知识图谱 -->
     <section class="view" id="view-graph"><div class="view-head"><div><h1>知识图谱</h1><p>API 依赖图谱（函数调用关系）· 后台数据驱动自动刷新</p></div></div><div class="panel"><div class="graph-wrap" id="fullGraph" style="background:radial-gradient(circle at 50% 40%,rgba(168,85,247,.1),transparent 70%)"></div></div></section>
-  </main>
+    <!-- 使用教程 -->
+  <section class="view" id="view-tutorial">
+    <div class="view-head">
+      <div>
+        <h1>使用教程</h1>
+        <p id="tutVersion">知识管理系统使用教程</p>
+      </div>
+    </div>
+    <div class="tut-wrap">
+      <aside class="tut-toc" id="tutToc"></aside>
+      <div class="tut-content" id="tutContent"><div class="ps-loading">正在加载教程…</div></div>
+    </div>
+  </section>
+</main>
 
   <footer class="statusbar"><span class="s" id="aiStat"><span class="led"></span>AI 平台</span><span class="s" id="ksStat"><span class="led"></span>知识系统</span><span class="s warn"><span class="led"></span><span id="conflictStat">0 冲突</span></span><span style="margin-left:auto" id="footProj">—</span></footer>
 </div>
