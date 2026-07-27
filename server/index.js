@@ -381,8 +381,21 @@ app.post('/api/generate', async (req, res) => {
   }
 });
 
-// 健康检查
-app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'testcase-gen-frontend', ks: cfg.get().ks.apiBase }));
+// 健康检查：除 BFF 自身外，真实探测知识系统(KS)可达性，避免「展示性虚假连通」
+// （与 /api/settings/test 的 KS 探测保持一致，作为前端连通状态的单一数据源）
+app.get('/api/health', async (req, res) => {
+  const ksBase = cfg.get().ks.apiBase;
+  let ksReachable = false, ksStatus = null, ksError = null;
+  try {
+    const r = await fetch(ksBase.replace(/\/$/, '') + '/api/health', { method: 'GET' });
+    ksReachable = r.ok;
+    ksStatus = r.status;
+  } catch (e) {
+    ksReachable = false;
+    ksError = String(e.message || e).slice(0, 200);
+  }
+  res.json({ status: 'ok', service: 'testcase-gen-frontend', ks: ksBase, ksReachable, ksStatus, ksError });
+});
 
 // 当 CodeBuddy 通道配置了自定义模型（endpoint+model）时，将其注册为 CodeBuddy 自定义模型：
 // 写入 .codebuddy/models.json（harness 仍用 CodeBuddy，模型走自有 endpoint/apiKey），

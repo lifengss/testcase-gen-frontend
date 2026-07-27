@@ -56,6 +56,21 @@ function renderUserChip() {
 
 // ---- 项目 ----
 async function loadProjects() {
+  // 真实连通检测（最先执行）：探测知识系统(KS)真实可达性。
+  // 错误端口/地址时不应展示项目数据卡，也不应显示「已连接」。
+  const ks = await api('GET', '/api/health');
+  const ksOk = !!(ks.data && ks.data.ksReachable);
+  state.ksOk = ksOk;
+  $('#ksStat').innerHTML = `<span class="led${ksOk ? '' : ' off'}"></span>知识系统 ${ksOk ? '已连接' : '未正确配置'}`;
+  applyKsLock();
+  if (!ksOk) {
+    // 知识库未连接：锁定功能入口，主区显示配置提示，仅「系统设置」可打开
+    showKsBlock((ks.data && ks.data.ksError) || '');
+    renderUserChip(); updateAiStatus();
+    return;
+  }
+  hideKsBlock();
+
   const { data } = await api('GET', '/api/projects');
   const list = (data && data.data && data.data.projects) || [];
   const menu = $('#psMenu'); menu.innerHTML = '';
@@ -75,11 +90,40 @@ async function loadProjects() {
   window.__projects = list;
   if (!summaryPid) summaryPid = (state.project && list.some(p => p.id === state.project)) ? state.project : (list[0] && list[0].id);
   renderProjTabs();
-  // 真实连通检测：知识系统健康 + AI 平台状态（状态栏指示反映实测结果，避免展示性虚假连通）
-  const ks = await api('GET', '/api/health');
-  $('#ksStat').innerHTML = `<span class="led${ks.ok ? '' : ' off'}"></span>知识系统 ${ks.ok ? '已连接' : '断开'}`;
   renderUserChip();
   updateAiStatus();
+}
+
+// 知识库未正确连接时：锁定侧栏功能入口（「系统设置」齿轮除外），仅保留设置可点
+function applyKsLock() {
+  $$('.nav-item').forEach(n => { if (n.id === 'gearNav') return; n.classList.toggle('locked', !state.ksOk); });
+}
+// 主区域覆盖层：提示用户先到系统设置修正知识库地址
+function showKsBlock(err) {
+  let el = document.getElementById('ksBlock');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'ksBlock';
+    el.className = 'ks-block';
+    el.innerHTML = `<div class="ks-block-card">
+      <div class="ks-block-icon">⚠</div>
+      <h2>知识库未正确连接</h2>
+      <p>当前配置的知识库地址不可达（端口或地址错误）。工作台功能已暂时锁定，请先在「系统设置」中填写正确的知识库地址（默认 <code>http://localhost:3000</code>）并测试连接。</p>
+      <p class="ks-block-err"></p>
+      <button class="btn btn-primary" id="ksBlockGo">前往系统设置</button>
+    </div>`;
+    const main = document.querySelector('.main');
+    if (main) main.appendChild(el);
+    const go = document.getElementById('ksBlockGo');
+    if (go) go.onclick = () => { if (typeof openSettings === 'function') openSettings(); };
+  }
+  const errEl = el.querySelector('.ks-block-err');
+  if (errEl) errEl.textContent = err ? ('探测详情：' + err) : '';
+  el.style.display = 'flex';
+}
+function hideKsBlock() {
+  const el = document.getElementById('ksBlock');
+  if (el) el.style.display = 'none';
 }
 // AI 平台真实连通状态：调用 BFF /api/ai-status（探测 codebuddy CLI / openai endpoint），联动状态栏指示灯
 async function updateAiStatus() {
@@ -177,6 +221,8 @@ function summaryHtml(m) {
 
 // ---- 导航 ----
 $$('.nav-item').forEach(n => n.onclick = () => {
+  // 知识库未正确连接时，锁定所有功能入口（系统设置齿轮除外）；点击其他入口提示并打开设置
+  if (!state.ksOk && n.id !== 'gearNav') { toast('请先在系统设置中正确配置知识库', 'err'); if (typeof openSettings === 'function') openSettings(); return; }
   const view = n.dataset.view;
   $$('.nav-item').forEach(x => x.classList.remove('active'));
   $$('.view').forEach(v => v.classList.remove('active'));
@@ -1354,6 +1400,11 @@ if (setSave) setSave.addEventListener('click', async () => {
     _ksBase = (saved.ks && saved.ks.apiBase) || '';
     toast('设置已保存（即时生效，无需重启）', 'ok');
     closeSettings();
+    // 保存后重检知识库连通性：若已修正则解除锁定并刷新各功能区；否则保持锁定提示
+    await loadProjects();
+    if (state.ksOk) {
+      await loadContext(); await loadReview(); await loadCommit(); await loadBackflow(); await loadScopes();
+    }
   } else {
     toast('保存失败', 'err');
   }
@@ -1362,9 +1413,10 @@ if (setSave) setSave.addEventListener('click', async () => {
 // ---- 初始化 ----
 (async () => {
   await loadSettings();
-  const r = await api('GET', '/api/projects');
-  window.__projects = (r.data && r.data.data && r.data.data.projects) || [];
   await loadProjects();
   bindDraftEditModal();
-  await loadContext(); await loadReview(); await loadCommit(); await loadBackflow(); await loadScopes();
+  // 知识库未连接时仅保留配置提示与「系统设置」，不加载各功能区（避免无意义的失败请求）
+  if (state.ksOk) {
+    await loadContext(); await loadReview(); await loadCommit(); await loadBackflow(); await loadScopes();
+  }
 })();

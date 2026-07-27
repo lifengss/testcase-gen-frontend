@@ -163,10 +163,10 @@ textarea:focus,select:focus,input:focus{outline:none;border-color:rgba(34,211,23
 .draft .title{font-weight:600;font-size:14px}
 .draft .badge{font-size:10.5px;font-family:var(--font-mono);padding:3px 8px;border-radius:999px;border:1px solid var(--border);color:var(--text-2)}
 .draft.src-human{border-left:3px solid var(--aurora-1)}
-.draft.src-exec{border-left:3px solid #f59e0b}
+.draft.src-exec{border-left:3px solid var(--warn)}
 .draft.src-other{border-left:3px solid var(--text-3)}
 .badge-human_edit{background:rgba(34,211,238,.16);color:var(--aurora-1)}
-.badge-exec_backflow{background:rgba(245,158,11,.16);color:#f59e0b}
+.badge-exec_backflow{background:rgba(251,191,36,.16);color:var(--warn)}
 .badge-other{background:rgba(255,255,255,.06);color:var(--text-3)}
 .draft .meta{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 2px}
 .draft .meta span{font-size:11px;color:var(--text-3);background:rgba(255,255,255,.04);border:1px solid var(--border);padding:2px 8px;border-radius:999px}
@@ -317,6 +317,17 @@ input[type=file]{display:none}
 .tut-cap{font-size:12px;color:var(--text-3);margin:-6px 0 14px;text-align:center}
 .tut-nav{display:flex;justify-content:space-between;gap:12px;margin-top:32px;padding-top:18px;border-top:1px solid var(--border)}
 .tut-ver{font-size:11px;color:var(--text-3);font-family:var(--font-mono);margin-top:10px}
+/* 知识库未正确连接：锁定侧栏功能入口（仅「系统设置」可点） */
+.nav-item.locked{opacity:.38;pointer-events:none;cursor:not-allowed;filter:grayscale(.7)}
+/* 主区域覆盖层：提示先到系统设置修正知识库地址 */
+.ks-block{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(8,11,16,.72);backdrop-filter:blur(3px);z-index:20}
+.ks-block-card{max-width:460px;padding:32px 34px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.ks-block-icon{font-size:34px;margin-bottom:6px;color:var(--warn)}
+.ks-block-card h2{margin:0 0 10px;font-size:18px;color:var(--text-1)}
+.ks-block-card p{margin:0 0 14px;color:var(--text-2);font-size:13.5px;line-height:1.7}
+.ks-block-card code{background:var(--surface-2);padding:1px 6px;border-radius:5px;color:var(--aurora-1);font-family:var(--font-mono)}
+.ks-block-err{font-size:12px;color:#ff8d6b;word-break:break-all;margin-bottom:18px !important}
+.ks-block-card .btn-primary{margin:0 auto}
 </style>
 </head>
 <body>
@@ -335,18 +346,18 @@ input[type=file]{display:none}
 
   <aside class="sidebar">
     <div class="nav-group">工作区</div>
-    <div class="nav-item" data-view="projects"><span class="ico">▦</span>项目空间</div>
-    <div class="nav-item active" data-view="generator"><span class="ico">✦</span>生成中心</div>
-    <div class="nav-item" data-view="review"><span class="ico">✎</span>草稿审阅</div>
-    <div class="nav-item" data-view="backflow"><span class="ico">↻</span>执行回流</div>
+    <div class="nav-item" data-view="projects"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></span>项目空间</div>
+    <div class="nav-item active" data-view="generator"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4z"/><path d="M19 14l.9 2.1 2.1.9-2.1.9L19 20l-.9-2.1-2.1-.9 2.1-.9z"/></svg></span>生成中心</div>
+    <div class="nav-item" data-view="review"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span>草稿审阅</div>
+    <div class="nav-item" data-view="backflow"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg></span>执行回流</div>
     <div class="nav-group">知识</div>
-    <div class="nav-item" data-view="commit"><span class="ico">⬡</span>入库看板</div>
-    <div class="nav-item" data-view="graph"><span class="ico">⌾</span>知识图谱</div>
-    <div class="nav-item" data-view="retest"><span class="ico">🧪</span>回测</div>
+    <div class="nav-item" data-view="commit"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span>入库看板</div>
+    <div class="nav-item" data-view="graph"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg></span>知识图谱</div>
+    <div class="nav-item" data-view="retest"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5.5L5 18a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3L14 8.5V3"/></svg></span>回测</div>
     <div class="nav-group">帮助</div>
-    <div class="nav-item" data-view="tutorial"><span class="ico">❖</span>使用教程</div>
+    <div class="nav-item" data-view="tutorial"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>使用教程</div>
     <div class="nav-sep"><b>当前项目</b> <span id="sidePid">—</span><br/><span id="sideStat">缓冲 0 · 已入库 0</span></div>
-    <div class="nav-item" id="gearNav"><i>⚙</i>系统设置</div>
+    <div class="nav-item" id="gearNav"><i><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></i>系统设置</div>
   </aside>
 
   <main class="main">
@@ -356,49 +367,49 @@ input[type=file]{display:none}
         <button class="btn btn-ghost" onclick="loadContext()">刷新上下文</button></div>
       <div class="gen-grid">
         <div class="panel">
-          <div class="panel-title">⚙ 生成配置</div>
+          <div class="panel-title"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> 生成配置</div>
           <div class="seg" id="genSeg"><button class="on" data-t="gen_outline">大纲</button><button data-t="gen_cases">条目</button><button data-t="gen_scripts">脚本</button></div>
           <div class="field"><label>测试范围</label><div class="seg" id="scopeTabs" style="margin-bottom:8px"><button class="on" data-t="code">按代码模块</button><button data-t="func">按功能模块</button></div><label style="display:flex;align-items:center;gap:6px;margin:6px 0 8px;font-size:13px;color:var(--text-2,#9fb3c8);cursor:pointer;user-select:none"><input type="checkbox" id="scopeSelectAll" checked style="width:15px;height:15px;accent-color:#4f8cff;cursor:pointer"> 全选所有模块</label><div class="scope-tree" id="scopeTree"><div class="scope-hint">加载中…</div></div><div class="scope-tree" id="funcTree" style="display:none"><div class="scope-hint">请先上传 PRD 或需求列表</div></div></div>
           <div class="field"><label>测试深度</label><div class="seg" id="depthSeg"><button class="on" data-t="smoke">冒烟</button><button data-t="full">全量</button></div></div>
           <div class="field"><label>自动化框架</label><select class="select" id="fwSel"><option>pytest (Python)</option><option>JUnit5 (Java)</option><option>Jest (TS)</option></select></div>
           <div class="field"><label>约束 / 备注</label><textarea id="noteTa" placeholder="如：覆盖异常分支与幂等性，函数调用关系以图谱为准…"></textarea></div>
-          <button class="btn btn-primary" style="width:100%;justify-content:center" id="genBtn">⚡ 生成测试用例</button>
+          <button class="btn btn-primary" style="width:100%;justify-content:center" id="genBtn"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> 生成测试用例</button>
           <div class="upload-zone">
             <div class="upload-zone-title">文档材料</div>
             <div class="upload-grid">
               <label class="upload-card code">
                 <input type="file" id="codeFile" accept=".zip,.tar,.gz,.7z,.py,.js,.ts,.java,.go"/>
-                <div class="upload-icon">⌘</div>
+                <div class="upload-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
                 <div class="upload-info">
                   <div class="upload-title">代码 / 接口</div>
                   <div class="upload-desc">生成 API 调用依赖图谱</div>
                 </div>
-                <div class="upload-arrow">⬆</div>
+                <div class="upload-arrow"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></div>
               </label>
               <label class="upload-card prd">
                 <input type="file" id="prdFile" accept=".md,.txt,.pdf"/>
-                <div class="upload-icon">◈</div>
+                <div class="upload-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
                 <div class="upload-info">
                   <div class="upload-title">PRD 文档</div>
                   <div class="upload-desc">沉淀为项目描述 Wiki</div>
                 </div>
-                <div class="upload-arrow">⬆</div>
+                <div class="upload-arrow"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></div>
               </label>
               <label class="upload-card req">
                 <input type="file" id="reqFile" accept=".md,.txt,.pdf"/>
-                <div class="upload-icon">☰</div>
+                <div class="upload-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></div>
                 <div class="upload-info">
                   <div class="upload-title">需求列表</div>
                   <div class="upload-desc">优先于 PRD，按功能模块选范围</div>
                 </div>
-                <div class="upload-arrow">⬆</div>
+                <div class="upload-arrow"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></div>
               </label>
             </div>
           </div>
         </div>
-        <div class="stream" id="stream"><div class="stream-head"><span class="tag" id="streamTag">gen_outline</span><span style="font-size:11px;color:var(--text-3)" id="streamMeta">点击「生成」开始</span><span style="flex:1"></span><span class="dl-btns" id="dlBtns" style="display:none"><button class="btn btn-primary btn-sm" id="saveDraft">＋ 保存到草稿</button><button class="btn btn-ghost btn-sm" id="dlMd">⬇ Markdown</button><button class="btn btn-ghost btn-sm" id="dlPdf">⬇ PDF</button></span></div><div id="streamBody"></div></div>
+        <div class="stream" id="stream"><div class="stream-head"><span class="tag" id="streamTag">gen_outline</span><span style="font-size:11px;color:var(--text-3)" id="streamMeta">点击「生成」开始</span><span style="flex:1"></span><span class="dl-btns" id="dlBtns" style="display:none"><button class="btn btn-primary btn-sm" id="saveDraft"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 保存到草稿</button><button class="btn btn-ghost btn-sm" id="dlMd"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg> Markdown</button><button class="btn btn-ghost btn-sm" id="dlPdf"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg> PDF</button></span></div><div id="streamBody"></div></div>
         <div class="panel">
-          <div class="panel-title">◈ 知识上下文（只读）<span id="ctxReload" style="cursor:pointer;color:var(--aurora-1)">⟳</span></div>
+          <div class="panel-title"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg> 知识上下文（只读）<span id="ctxReload" style="cursor:pointer;color:var(--aurora-1)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg></span></div>
           <div class="ctx-stat"><div class="stat"><div class="v" id="ctxTC">0</div><div class="k">历史用例</div></div><div class="stat"><div class="v" id="ctxSC">0</div><div class="k">自动化脚本</div></div><div class="stat"><div class="v" id="ctxND">0</div><div class="k">图谱节点</div></div></div>
           <div class="panel-title">API 依赖图谱（函数调用关系）</div>
           <div class="graph-wrap" id="miniGraph"></div>
@@ -422,12 +433,12 @@ input[type=file]{display:none}
         <div class="upload-grid">
           <label class="upload-card code">
             <input type="file" id="reportFile" accept=".xml,.json"/>
-            <div class="upload-icon">↻</div>
+            <div class="upload-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg></div>
             <div class="upload-info">
               <div class="upload-title">执行报告</div>
               <div class="upload-desc">JUnit / pytest XML 或 JSON 摘要</div>
             </div>
-            <div class="upload-arrow">⬆</div>
+            <div class="upload-arrow"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></div>
           </label>
         </div>
       </div>
@@ -441,12 +452,12 @@ input[type=file]{display:none}
         <div class="upload-grid">
           <label class="upload-card code">
             <input type="file" id="retestFile" accept=".md,.txt,.json"/>
-            <div class="upload-icon">🧪</div>
+            <div class="upload-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5.5L5 18a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3L14 8.5V3"/></svg></div>
             <div class="upload-info">
               <div class="upload-title">测试报告</div>
               <div class="upload-desc">Markdown / JSON 测试报告</div>
             </div>
-            <div class="upload-arrow">⬆</div>
+            <div class="upload-arrow"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></div>
           </label>
         </div>
       </div>
@@ -454,7 +465,7 @@ input[type=file]{display:none}
     </section>
 
     <!-- 入库看板 -->
-    <section class="view" id="view-commit"><div class="view-head"><div><h1>入库看板</h1><p>双通路入库：批量确认（冲突检测+质量门控）/ 单条确认</p></div><button class="btn btn-primary" id="batchBtn">⬡ 批量确认入库</button></div><div id="commitList"></div></section>
+    <section class="view" id="view-commit"><div class="view-head"><div><h1>入库看板</h1><p>双通路入库：批量确认（冲突检测+质量门控）/ 单条确认</p></div><button class="btn btn-primary" id="batchBtn"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg> 批量确认入库</button></div><div id="commitList"></div></section>
 
     <!-- 知识图谱 -->
     <section class="view" id="view-graph"><div class="view-head"><div><h1>知识图谱</h1><p>API 依赖图谱（函数调用关系）· 后台数据驱动自动刷新</p></div></div><div class="panel"><div class="graph-wrap" id="fullGraph" style="background:radial-gradient(circle at 50% 40%,rgba(168,85,247,.1),transparent 70%)"></div></div></section>
@@ -479,7 +490,7 @@ input[type=file]{display:none}
   <!-- 设置模块：左下角齿轮入口 -->
   <div class="modal" id="settingsModal">
     <div class="modal-card">
-      <div class="modal-head"><h3>⚙ 系统设置</h3><button class="modal-close" id="settingsClose" title="关闭">✕</button></div>
+      <div class="modal-head"><h3><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> 系统设置</h3><button class="modal-close" id="settingsClose" title="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
       <div class="modal-body">
         <div class="sec-title">知识库系统（KS）</div>
         <div class="field"><label>KS API 地址</label><input class="ipt" id="setKsApi" placeholder="http://localhost:3000"/></div>
@@ -519,7 +530,7 @@ input[type=file]{display:none}
   <!-- 草稿编辑弹窗（草稿审阅页：编辑/保存人工编辑草稿，对齐知识管理系统草稿审核） -->
   <div class="modal" id="draftEditModal">
     <div class="modal-card">
-      <div class="modal-head"><h3>✎ 编辑草稿</h3><button class="modal-close" title="关闭">✕</button></div>
+      <div class="modal-head"><h3><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg> 编辑草稿</h3><button class="modal-close" title="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
       <div class="modal-body">
         <input class="inp" id="draftEditTitle" placeholder="标题"/>
         <textarea class="ta" id="draftEditContent" placeholder="正文内容（支持 Markdown）"></textarea>
