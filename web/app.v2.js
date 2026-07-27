@@ -1339,7 +1339,53 @@ async function loadSettings() {
     _ksBase = (payload.ks && payload.ks.apiBase) || '';
   }
 }
-function openSettings() { loadSettings(); setTestMsg.textContent = ''; setTestMsg.className = 'test-msg'; settingsModal.classList.add('open'); }
+// ---- AI CLI 登录态（设置弹窗内）----
+async function loadAiCliStatus() {
+  const badge = document.getElementById('aiCliBadge');
+  const msg = document.getElementById('aiCliMsg');
+  const loginBtn = document.getElementById('aiCliLogin');
+  const stat = document.getElementById('aiCliStat');
+  if (!badge) return;
+  badge.textContent = '检测中…'; badge.style.background = '#3a4250'; badge.style.color = '#fff';
+  if (loginBtn) loginBtn.style.display = 'none';
+  try {
+    const r = await api('GET', '/api/ai-cli/status');
+    const outer = (r && r.data) || {};
+    const d = outer.data || outer;
+    if (!d || !d.status) { badge.textContent = '检测失败'; badge.style.background = '#b45309'; return; }
+    const map = {
+      logged_in: { t: '已登录', c: '#16a34a' },
+      not_logged_in: { t: '未登录', c: '#dc2626' },
+      not_installed: { t: 'CLI 未安装', c: '#b45309' },
+    };
+    const m = map[d.status] || { t: d.status, c: '#3a4250' };
+    badge.textContent = m.t; badge.style.background = m.c;
+    if (msg) msg.textContent = d.message || '';
+    if (loginBtn) loginBtn.style.display = (d.status === 'logged_in') ? 'none' : '';
+    if (stat) stat.textContent = '';
+  } catch (e) {
+    badge.textContent = '检测失败'; badge.style.background = '#b45309';
+    if (stat) stat.textContent = '请求失败：' + (e && e.message ? e.message : e);
+  }
+}
+async function aiCliLogin() {
+  const stat = document.getElementById('aiCliStat');
+  const loginBtn = document.getElementById('aiCliLogin');
+  if (stat) stat.textContent = '正在打开浏览器登录…';
+  if (loginBtn) loginBtn.disabled = true;
+  try {
+    const r = await api('POST', '/api/ai-cli/login', {});
+    const outer = (r && r.data) || {};
+    if (stat) stat.textContent = outer.message || outer.error || (r && r.ok ? '已触发登录' : '登录失败');
+  } catch (e) {
+    if (stat) stat.textContent = '请求失败：' + (e && e.message ? e.message : e);
+  } finally {
+    if (loginBtn) loginBtn.disabled = false;
+    setTimeout(loadAiCliStatus, 1500);
+  }
+}
+
+function openSettings() { loadSettings(); setTestMsg.textContent = ''; setTestMsg.className = 'test-msg'; settingsModal.classList.add('open'); loadAiCliStatus(); }
 function closeSettings() { settingsModal.classList.remove('open'); }
 
 if (gearBtn) gearBtn.addEventListener('click', openSettings);
@@ -1347,6 +1393,10 @@ const settingsClose = document.getElementById('settingsClose');
 if (settingsClose) settingsClose.addEventListener('click', closeSettings);
 if (settingsModal) settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) closeSettings(); });
 if (setAiProvider) setAiProvider.addEventListener('change', () => { syncProviderUI(); if (setAiProvider.value === 'codebuddy' && cbBuiltin.checked) loadCbModels(cbModel.value); });
+const aiCliLoginBtn = document.getElementById('aiCliLogin');
+if (aiCliLoginBtn) aiCliLoginBtn.addEventListener('click', aiCliLogin);
+const aiCliRefreshBtn = document.getElementById('aiCliRefresh');
+if (aiCliRefreshBtn) aiCliRefreshBtn.addEventListener('click', loadAiCliStatus);
 if (cbBuiltin) cbBuiltin.addEventListener('change', () => { syncProviderUI(); if (cbBuiltin.checked) loadCbModels(cbModel.value); });
 if (cbCustom) cbCustom.addEventListener('change', syncProviderUI);
 const setTest = document.getElementById('setTest');

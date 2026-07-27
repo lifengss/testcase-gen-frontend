@@ -246,6 +246,9 @@ input[type=file]{display:none}
 .modal-body{padding:20px}
 .modal-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-top:1px solid var(--border)}
 .sec-title{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--aurora-1);margin:6px 0 12px}
+.ai-cli-row{display:flex;align-items:center;gap:10px;margin:4px 0 10px}
+.ai-cli-name{font-weight:600;color:var(--text-1)}
+.ai-cli-row .badge{border-radius:999px;padding:3px 10px;font-size:12px;background:#3a4250;color:#fff;border:1px solid var(--border)}
 .modal-body .sec-title:not(:first-child){margin-top:22px}
 .modal-body .field label{font-size:12px;color:var(--text-2);display:block;margin-bottom:8px}
 .ipt{width:100%;height:42px;border-radius:10px;background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--text-1);padding:0 12px;font-size:13px;font-family:var(--font-mono)}
@@ -522,6 +525,21 @@ input[type=file]{display:none}
         <div class="field" id="setMaxTurnsField" style="display:none"><label>最大生成轮次 (maxTurns)</label><input class="ipt" id="setMaxTurns" type="number" min="1" max="50" placeholder="8"/><span class="hint">CodeBuddy agent 的最大 turn 轮次；生成步骤多时调大可避免「Max turns exceeded」，建议 6–12</span></div>
         <div class="hint" id="setAiNote"></div>
         <div class="test-row"><button class="btn btn-ghost btn-sm" id="setTest">测试连接</button><span class="test-msg" id="setTestMsg"></span></div>
+
+        <div class="sec-title">AI CLI 登录（CodeBuddy）</div>
+        <div class="card" id="aiCliCard">
+          <div class="ai-cli-row">
+            <span class="badge" id="aiCliBadge">检测中…</span>
+            <span class="ai-cli-name" id="aiCliName">CodeBuddy CLI</span>
+          </div>
+          <p class="hint" id="aiCliMsg">正在检测 CodeBuddy CLI 登录状态…</p>
+          <div class="test-row">
+            <button class="btn btn-primary btn-sm" id="aiCliLogin" style="display:none">登录</button>
+            <button class="btn btn-ghost btn-sm" id="aiCliRefresh">刷新状态</button>
+            <span class="test-msg" id="aiCliStat"></span>
+          </div>
+          <p class="hint" style="margin-top:6px;">默认使用 CodeBuddy CLI 作为 AI 通道；后续可扩展其它 CLI。登录为一次性浏览器授权，令牌由 CLI 持久保存，后续无需重复登录。</p>
+        </div>
       </div>
       <div class="modal-foot"><span class="hint" id="setHint">修改即时生效，无需重启服务</span><button class="btn btn-primary" id="setSave">保存设置</button></div>
     </div>

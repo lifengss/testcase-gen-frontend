@@ -14,7 +14,8 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { execSync } = require('child_process');
+const os = require('os');
+const { execSync, spawn } = require('child_process');
 
 const PORT = Number(process.env.PORT || 4123);
 // 运行时配置中心：以环境变量为种子，支持前端「设置」模块热修改（无需重启）
@@ -501,6 +502,8 @@ app.put('/api/settings', (req, res) => {
     const next = cfg.set(req.body || {});
     // CodeBuddy 通道：若配置了自定义模型 endpoint，则同步注册到 .codebuddy/models.json
     syncCodeBuddyCustomModel(next.ai);
+    // 配置变更后立即失效 AI 连通缓存，使状态栏下次取用真实探测（避免改不可用配置仍显示「已连接」）
+    _aiStatusCache = null;
     res.json({ success: true, data: next });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
@@ -508,14 +511,41 @@ app.put('/api/settings', (req, res) => {
 });
 
 // ---- 连通性探测辅助 ----
-// CodeBuddy 通道：探测 CLI 是否安装可用（liveness）。注意此探测不验证登录态/模型授权，
-// 仅确认 harness CLI 可达；真正的模型调用在生成时由 codebuddy-client 发起。
-function testCodeBuddy() {
+// CodeBuddy 通道：默认仅探测 CLI 是否安装可用（liveness）。
+// 若用户配置了「自定义模型 + 自定义 endpoint」，则额外真实探测该 endpoint 可达性——
+// 仅 CLI 在但自定义端点不通，仍视为「不可用配置」，避免状态栏虚假连通。
+async function testCodeBuddy(ai) {
+  let cliVer = null;
   try {
     const v = execSync('codebuddy --version', { timeout: 6000, windowsHide: true, encoding: 'utf8' });
-    return { provider: 'codebuddy', configured: true, reachable: true, label: 'CodeBuddy CLI 可达', detail: 'codebuddy ' + String(v).trim().split('\n')[0].slice(0, 24) };
+    cliVer = String(v).trim().split('\n')[0].slice(0, 24);
+  } catch (_) { cliVer = null; }
+  const ep = (ai && ai.useCustomModel && ai.endpoint && ai.endpoint.trim()) ? ai.endpoint.trim() : '';
+  if (!ep) {
+    // 内置模型：CLI 可达即视为可用
+    if (cliVer) return { provider: 'codebuddy', configured: true, reachable: true, label: 'CodeBuddy CLI 可达', detail: 'codebuddy ' + cliVer };
+    return { provider: 'codebuddy', configured: false, reachable: false, label: 'CodeBuddy 不可达', detail: 'CLI 未安装或未登录' };
+  }
+  // 自定义 endpoint：必须真实可达才算连通（避免只因 CLI 在就报「已连接」）
+  const apiKey = (ai.apiKey && ai.apiKey.trim()) || '';
+  const model = (ai.model && ai.model.trim()) || 'gpt-4o-mini';
+  const t0 = Date.now();
+  try {
+    const resp = await fetch(ep, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({ model, messages: [{ role: 'system', content: 'ping' }, { role: 'user', content: 'hi' }], max_tokens: 5 }),
+    });
+    const latencyMs = Date.now() - t0;
+    if (resp.ok) {
+      const j = await resp.json().catch(() => ({}));
+      const ok = !!(j.choices && j.choices[0] && j.choices[0].message);
+      if (ok) return { provider: 'codebuddy', configured: true, reachable: true, label: 'CodeBuddy + 自定义端点可达', detail: `HTTP ${resp.status} · ${latencyMs}ms`, latencyMs };
+      return { provider: 'codebuddy', configured: true, reachable: false, label: '自定义端点响应异常', detail: cliVer ? 'CLI 可达但端点响应缺少 choices' : '端点响应缺少 choices', latencyMs };
+    }
+    return { provider: 'codebuddy', configured: true, reachable: false, label: `自定义端点不可达 (HTTP ${resp.status})`, detail: (await resp.text().catch(() => '')).slice(0, 160), latencyMs };
   } catch (e) {
-    return { provider: 'codebuddy', configured: false, reachable: false, label: 'CodeBuddy 不可达', detail: String(e.message || e).split('\n')[0].slice(0, 120) };
+    return { provider: 'codebuddy', configured: true, reachable: false, label: '自定义端点不可达', detail: String(e.message || e).slice(0, 160), latencyMs: Date.now() - t0 };
   }
 }
 // OpenAI 兼容通道：发起一次极小 chat 请求（max_tokens=5），真实验证 endpoint 可达 + 鉴权有效
@@ -547,10 +577,147 @@ async function testOpenAI(ai) {
 async function checkAiStatus(aiCfg) {
   const provider = (aiCfg && aiCfg.provider) || 'none';
   if (provider === 'none') return { provider: 'none', configured: false, reachable: false, label: '未启用 AI 平台' };
-  if (provider === 'codebuddy') return testCodeBuddy();
+  if (provider === 'codebuddy') return await testCodeBuddy(aiCfg);
   if (provider === 'openai') return await testOpenAI(aiCfg);
   return { provider, configured: true, reachable: false, label: provider, detail: '未知供应商' };
 }
+
+// ---------------------------------------------------------------------------
+// AI CLI 登录态管理（默认 CodeBuddy CLI，预留多 provider 扩展）
+// 设计：后端只负责"检测登录态"与"触发登录"（派生 CLI 打开浏览器 OAuth）。
+//       凭证由 CodeBuddy CLI 自身持久化在用户配置目录，天然一次登录、后续免登。
+// ---------------------------------------------------------------------------
+const AI_CLI_PROVIDERS = {
+  codebuddy: {
+    id: 'codebuddy',
+    name: 'CodeBuddy CLI',
+    default: true,
+    // 解析入口脚本（镜像 codebuddy-client.js 的 resolveCliScript）
+    resolve: () => {
+      if (process.env.CODEBUDDY_CODE_PATH) return process.env.CODEBUDDY_CODE_PATH;
+      try {
+        const groot = execSync('npm root -g', { encoding: 'utf-8' }).trim();
+        const p = path.join(groot, '@tencent-ai', 'codebuddy-code', 'bin', 'codebuddy');
+        if (fs.existsSync(p)) return p;
+      } catch (_) {}
+      try {
+        const w = execSync(process.platform === 'win32' ? 'where codebuddy' : 'command -v codebuddy', { encoding: 'utf-8' }).toString().trim().split(/\r?\n/)[0];
+        if (w) return w;
+      } catch (_) {}
+      return 'codebuddy'; // PATH 兜底
+    },
+  },
+};
+
+// 候选的 codebuddy 登录令牌文件位置（不同版本/平台可能不同）——登录态兜底探测
+function _codebuddyTokenCandidates() {
+  const home = os.homedir();
+  const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+  return [
+    path.join(home, '.codebuddy', 'credentials.json'),
+    path.join(home, '.codebuddy', 'auth.json'),
+    path.join(home, '.codebuddy', 'session.json'),
+    path.join(appData, 'CodeBuddy', 'credentials.json'),
+    path.join(appData, 'codebuddy', 'credentials.json'),
+    path.join(home, '.config', 'codebuddy', 'credentials.json'),
+  ];
+}
+function _hasCodebuddyToken() {
+  return _codebuddyTokenCandidates().some((c) => {
+    try { return fs.existsSync(c) && fs.statSync(c).size > 0; } catch (_) { return false; }
+  });
+}
+
+// 启动 CLI：脚本为绝对 .js 路径时用 node 拉起；.cmd/.ps1/.bat/.exe 直接运行；PATH 兜底用 shell
+function _spawnCli(script, args, opts) {
+  if (script && script !== 'codebuddy' && fs.existsSync(script)) {
+    const lower = script.toLowerCase();
+    if (lower.endsWith('.cmd') || lower.endsWith('.bat') || lower.endsWith('.ps1') || lower.endsWith('.exe')) {
+      return spawn(script, args, opts);
+    }
+    return spawn(process.execPath, [script, ...args], opts);
+  }
+  return spawn(script, args, Object.assign({ shell: true }, opts || {}));
+}
+// 运行 CLI 子命令并取合并输出（带超时）
+function _runCli(script, args, timeoutMs) {
+  return new Promise((resolve) => {
+    let out = '';
+    let done = false;
+    const cp = _spawnCli(script, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const onData = (d) => { out += d.toString(); };
+    cp.stdout.on('data', onData);
+    cp.stderr.on('data', onData);
+    const finish = (code) => { if (done) return; done = true; clearTimeout(timer); resolve({ code, out }); };
+    cp.on('close', finish);
+    cp.on('error', () => finish(-1));
+    const timer = setTimeout(() => { try { cp.kill(); } catch (_) {} finish(-2); }, timeoutMs || 20000);
+  });
+}
+
+// 解析 CLI 脚本路径并判定是否"已安装"
+async function _resolveAndCheckInstalled(prov) {
+  const script = prov.resolve();
+  if (script && script !== 'codebuddy') {
+    return { script, installed: fs.existsSync(script) };
+  }
+  // PATH 兜底：用 --version 实测
+  const v = await _runCli('codebuddy', ['--version'], 8000);
+  return { script: 'codebuddy', installed: v.code === 0 && !/not recognized|not found|unknown command/i.test(v.out) };
+}
+
+// 检测某 provider 的 CLI 登录态（三态：not_installed / not_logged_in / logged_in）
+async function checkAiCliStatus(provider) {
+  const prov = AI_CLI_PROVIDERS[provider] || AI_CLI_PROVIDERS.codebuddy;
+  const { script, installed } = await _resolveAndCheckInstalled(prov);
+  if (!installed) {
+    return { provider: prov.id, name: prov.name, installed: false, loggedIn: false, status: 'not_installed', message: '未检测到 CodeBuddy CLI，请先执行：npm i -g @tencent-ai/codebuddy-code' };
+  }
+  // 优先用官方 `auth status` 判定登录态
+  const r = await _runCli(script, ['auth', 'status'], 20000);
+  const o = (r.out || '').toLowerCase();
+  let loggedIn = null;
+  if (/(logged in|已登录|authenticated|登录有效|token.*valid|session.*valid)/.test(o)) loggedIn = true;
+  else if (/(not logged|未登录|no (valid )?token|please log ?in|请登录|expired|unauthorized)/.test(o)) loggedIn = false;
+  // 命令不支持 / 输出不明确时，用令牌文件存在性兜底
+  if (loggedIn === null) loggedIn = _hasCodebuddyToken();
+  const status = loggedIn ? 'logged_in' : 'not_logged_in';
+  let message;
+  if (loggedIn) message = '已登录，AI CLI 能力可用（一次登录，后续无需重复）';
+  else message = (r.out && r.out.trim()) ? r.out.trim().slice(0, 200) : '未登录，请点击下方「登录」按钮在浏览器中完成授权';
+  return { provider: prov.id, name: prov.name, installed: true, loggedIn, status, message };
+}
+
+// 触发登录：派生 CLI login（打开默认浏览器 OAuth），立即返回，不阻塞 HTTP
+function startAiCliLogin(provider) {
+  const prov = AI_CLI_PROVIDERS[provider] || AI_CLI_PROVIDERS.codebuddy;
+  return (async () => {
+    const { script, installed } = await _resolveAndCheckInstalled(prov);
+    if (!installed) return { success: false, error: '未检测到 CodeBuddy CLI，请先安装：npm i -g @tencent-ai/codebuddy-code' };
+    try {
+      const child = _spawnCli(script, ['login'], { detached: true, stdio: 'ignore' });
+      child.unref();
+      return { success: true, message: '已在默认浏览器打开 CodeBuddy 登录页，请完成授权（一次性，令牌将持久保存）' };
+    } catch (e) {
+      return { success: false, error: String((e && e.message) || e) };
+    }
+  })();
+}
+
+// 端点：AI CLI 登录态
+app.get('/api/ai-cli/status', async (req, res) => {
+  try {
+    const s = await checkAiCliStatus((req.query && req.query.provider) || 'codebuddy');
+    res.json({ success: true, data: s });
+  } catch (e) {
+    res.json({ success: false, error: String((e && e.message) || e) });
+  }
+});
+// 端点：触发 AI CLI 登录（一次登录，后续免登）
+app.post('/api/ai-cli/login', async (req, res) => {
+  const r = await startAiCliLogin((req.body && req.body.provider) || 'codebuddy');
+  res.json(r.success ? r : Object.assign({ success: false }, r));
+});
 
 // 测试连接：同时验证 KS API 可达性 与 AI 平台连通性
 // 可选带 ksApiBase / ai 覆盖（来自设置表单，便于在保存前验证当前填写值）
