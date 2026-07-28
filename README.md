@@ -40,6 +40,23 @@ testcase-gen-frontend/
 - Node.js >= 18
 - 一个运行中的 `test-knowledge-system` 实例（默认 `http://localhost:3000`）
 
+## 前置条件（可选）
+
+| 依赖 | 用途 | 是否必须 |
+|------|------|----------|
+| CodeBuddy CLI (`@tencent-ai/codebuddy-code`) | `AI_PROVIDER=codebuddy` 时调用真实 LLM | **否**，可切 `openai` 或 `none` |
+| OpenAI 兼容 API Key | `AI_PROVIDER=openai` 时调用 | 用 openai 时必须 |
+| GBrain 内核 | 早期设计中的 AI 规划内核 | **否**，当前版本已解耦 |
+
+> **开箱即用说明**
+>
+> 直接 `npm install && npm start` 即可启动 BFF 和前端。若未配置 CodeBuddy CLI 或 OpenAI Key，系统会按以下顺序自动降级：
+> 1. 真实 AI（codebuddy / openai）
+> 2. 知识系统内置生成器（`POST /api/generate-cases`）
+> 3. 本地模板兜底
+>
+> 因此**离线环境也能生成测试用例**，只是内容基于模板而非 LLM。
+
 ## 快速开始
 
 ```bash
