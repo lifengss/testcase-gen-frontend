@@ -16,6 +16,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { execSync, spawn } = require('child_process');
+const logger = require('./logger');
 
 const PORT = Number(process.env.PORT || 4123);
 // 运行时配置中心：以环境变量为种子，支持前端「设置」模块热修改（无需重启）
@@ -27,6 +28,13 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// 请求日志（方法 / 路径 / 状态 / 耗时），写入 logs/app-*.log（保留 7 天）
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => logger.http(req, res, Date.now() - start, { ip: req.ip }));
+  next();
+});
 
 const upload = multer({ dest: path.join(__dirname, '..', 'tmp') });
 // 源数据上传用内存存储：直接拿到原始字节(req.file.buffer)，避免落盘 tmp 再读回带来的编码隐患
@@ -89,7 +97,6 @@ app.delete('/api/projects/:id', proxy('DELETE', '/api/projects/:id'));
 // 知识读取
 app.get('/api/brain/pages', proxy('GET', '/api/brain/pages'));
 app.get('/api/brain/pages/:category/:id', proxy('GET', '/api/brain/pages/:category/:id'));
-app.get('/api/graph-data', proxy('GET', '/api/graph-data'));
 app.post('/api/search', proxy('POST', '/api/search'));
 
 // 草稿 / 冲突 / 质量 / 入库（回写编排，路径 B）
@@ -138,8 +145,10 @@ app.post('/api/source-upload', memUpload.single('file'), async (req, res) => {
 // Context-Harvester：生成前只读采集知识上下文
 // ---------------------------------------------------------------------------
 async function harvestContext(project) {
-  const stats = { testCases: 0, qualityRules: 0, wikiPages: 0, graphNodes: 0, graphEdges: 0, searchHits: 0 };
+  const stats = { testCases: 0, qualityRules: 0, wikiPages: 0, graphNodes: 0, graphEdges: 0, graphFlows: 0, searchHits: 0 };
   const titles = { testCases: [], qualityRules: [], wikiPages: [] };
+  // 业务流程依赖图谱（业务侧唯一图谱来源）：黑盒测试拿不到源代码，故以 business-graph 取代代码图谱
+  let graph = null;
   const safe = async (fn) => { try { return await fn(); } catch (e) { return null; } };
 
   // 权威计数取自 /api/brain/stats：按分类全量统计、私有+共享去重，不受分页 limit 截断，
@@ -162,10 +171,16 @@ async function harvestContext(project) {
   const pw = await safe(() => ksCall('GET', '/api/brain/pages', { query: { category: 'project-wiki', project, limit: 50 } }));
   if (pw && pw.data && pw.data.data) titles.wikiPages = pw.data.data.map(p => p.title);
 
-  const gd = await safe(() => ksCall('GET', '/api/graph-data', { query: { project } }));
-  if (gd && gd.data && gd.data.data) { stats.graphNodes = (gd.data.data.nodes || []).length; stats.graphEdges = (gd.data.data.edges || []).length; }
+  // 业务流程依赖图谱：节点（API/业务步骤）+ 边 + 可测试业务流；data 可能为 null（尚未从 Wiki 生成）
+  const bg = await safe(() => ksCall('GET', '/api/business-graph', { query: { project } }));
+  if (bg && bg.data && bg.data.data) {
+    graph = bg.data.data;
+    stats.graphNodes = (graph.nodes || []).length;
+    stats.graphEdges = (graph.edges || []).length;
+    stats.graphFlows = (graph.flows || []).length;
+  }
 
-  return { stats, titles };
+  return { stats, titles, graph };
 }
 
 // 请求驱动检索：根据本次生成请求（scope/constraints/op）在知识库检索命中条目，
@@ -238,18 +253,29 @@ function buildQuery(op, sourceRefs, scope, constraints, ctx, hits) {
   const pushKind = (label, arr) => {
     arr.slice(0, 6).forEach(h => ctxLines.push(`- [${label}] ${h.title}（相关度 ${h.score}）：${(h.snippet || '').slice(0, 240)}`));
   };
-  // 实体上下文（GBrain 抽取 + 图谱关系）优先，再补关键词检索命中
+  // 业务流程依赖图谱（最高优上下文）：黑盒测试基于对外 API/业务步骤与可测试场景，不依赖源代码
+  let bizCtx = '';
+  const g = ctx.graph;
+  if (g && g.nodes && g.nodes.length) {
+    const nodeLines = g.nodes.slice(0, 40).map(n =>
+      `- ${n.api || ((n.method || '') + ' ' + (n.path || '')).trim() || n.id}｜${n.title || ''}（${n.role || ''}）：${(n.summary || '').slice(0, 160)}`);
+    const flowLines = (g.flows || []).slice(0, 10).map(f =>
+      `- ${f.name}：${(f.description || '').slice(0, 160)}（步骤：${(f.steps || []).join('→')}）`);
+    bizCtx = `【业务流程依赖图谱（最高优上下文，请据此设计用例覆盖各业务流与 API 节点）】\n业务步骤/API 节点：\n${nodeLines.join('\n')}\n可测试业务流/场景：\n${flowLines.join('\n')}`;
+  }
+  // 实体上下文（GBrain 抽取 + 图谱关系）其次，再补关键词检索命中
   pushKind('GBrain实体', byKind.entity);
   pushKind('历史用例', byKind.history);
   pushKind('质量门禁', byKind.rule);
   pushKind('项目Wiki', byKind.wiki);
-  pushKind('代码依赖', byKind.dep);
+  pushKind('API文档', byKind.dep);
   const ctxBlock = ctxLines.length ? ctxLines.join('\n') : '（本次检索无命中，请基于通用测试经验生成）';
   let q = `请基于知识系统上下文，为项目【${sourceRefs.project || ''}】生成【${opName}】。\n` +
     `范围模块：${mods}${funcs ? '；功能模块：' + funcs : ''}；深度：${depth}；框架：${constraints.framework || 'pytest'}。\n` +
     `约束：${constraints.note || '覆盖主流程、异常分支与边界'}。\n` +
-    `知识库规模概览：历史用例 ${ctx.stats.testCases} 条 / 质量规则 ${ctx.stats.qualityRules} 条 / 项目Wiki ${ctx.stats.wikiPages} 页 / API图谱 ${ctx.stats.graphNodes} 节点。\n` +
-    `【本次检索命中的知识库条目（作为生成上下文，请优先参考）】\n${ctxBlock}`;
+    `知识库规模概览：历史用例 ${ctx.stats.testCases} 条 / 质量规则 ${ctx.stats.qualityRules} 条 / 项目Wiki ${ctx.stats.wikiPages} 页 / 业务流图谱 ${ctx.stats.graphNodes} 节点 / ${ctx.stats.graphFlows} 业务流。\n` +
+    (bizCtx ? bizCtx + '\n' : '') +
+    `【本次检索命中的知识库条目（作为补充上下文）】\n${ctxBlock}`;
   // gen_cases 固定标记约束：要求每条测试用例以 ## TC-{序号} · {标题} 作为分隔，便于业务端拆分入库
   if (op === 'gen_cases') {
     q += '\n\n【格式约束】每条测试用例必须以如下固定标记开头，且序号连续递增：\n' +
@@ -309,6 +335,10 @@ const { callCodeBuddy } = require('./codebuddy-client');
 
 async function callAIProvider(op, query, constraints) {
   const c = cfg.get();
+  logger.app('info', 'ai callAIProvider', {
+    provider: c.ai.provider, model: c.ai.model,
+    useCustomModel: !!c.ai.useCustomModel, op,
+  });
   if (c.ai.provider === 'codebuddy') {
     const sysLines = [
       '你是测试用例生成专家，服务于知识管理系统的自动化测试用例生成流程。',
@@ -329,11 +359,13 @@ async function callAIProvider(op, query, constraints) {
     // 模型：内置模型直接按 id 使用；自定义模型（useCustomModel 且配了 endpoint）走 .codebuddy/models.json 解析自有 endpoint。
     const m = (c.ai.model && c.ai.model !== 'gpt-4o-mini') ? c.ai.model : 'claude-sonnet-4';
     const useCustom = !!c.ai.useCustomModel && !!(c.ai.endpoint && c.ai.model);
-    return callCodeBuddy(sys + '\n\n' + query, {
+    const r = await callCodeBuddy(sys + '\n\n' + query, {
       model: m,
       loadSettings: useCustom,
       maxTurns: c.ai.maxTurns,
     });
+    logger.app('info', 'ai result', { provider: 'codebuddy', model: m, empty: !r });
+    return r;
   }
   if (c.ai.provider === 'openai') return callOpenAI(op, query, constraints);
   return null; // none 或未识别：跳过真实 AI
@@ -623,9 +655,29 @@ function _codebuddyTokenCandidates() {
   ];
 }
 function _hasCodebuddyToken() {
-  return _codebuddyTokenCandidates().some((c) => {
+  // 1) 旧路径兜底（部分版本把令牌写在这些位置）
+  const legacy = _codebuddyTokenCandidates().some((c) => {
     try { return fs.existsSync(c) && fs.statSync(c).size > 0; } catch (_) { return false; }
   });
+  if (legacy) return true;
+  // 2) codebuddy 2.x：令牌与 IDE 扩展共享，写在
+  //    %LOCALAPPDATA%/CodeBuddyExtension/Data/Public/auth/<产品>.<ts>.info
+  //    内含有效 JWT（auth.expiresAt 为毫秒时间戳）。逐文件校验未过期即视为已登录。
+  try {
+    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+    const authDir = path.join(localAppData, 'CodeBuddyExtension', 'Data', 'Public', 'auth');
+    if (fs.existsSync(authDir)) {
+      const infos = fs.readdirSync(authDir).filter((f) => f.endsWith('.info'));
+      for (const f of infos) {
+        try {
+          const data = JSON.parse(fs.readFileSync(path.join(authDir, f), 'utf-8'));
+          const exp = data && data.auth && data.auth.expiresAt;
+          if (typeof exp === 'number' && exp > Date.now()) return true;
+        } catch (_) { /* 忽略损坏文件 */ }
+      }
+    }
+  } catch (_) {}
+  return false;
 }
 
 // 启动 CLI：脚本为绝对 .js 路径时用 node 拉起；.cmd/.ps1/.bat/.exe 直接运行；PATH 兜底用 shell
@@ -688,16 +740,25 @@ async function checkAiCliStatus(provider) {
   return { provider: prov.id, name: prov.name, installed: true, loggedIn, status, message };
 }
 
-// 触发登录：派生 CLI login（打开默认浏览器 OAuth），立即返回，不阻塞 HTTP
+// 触发登录：CodeBuddy 2.x 已无 `login` 子命令，登录须进入交互式 REPL 后用 `/login` 斜杠命令
+// （会打开浏览器 OAuth）。因此这里派生一个「可见且持久」的交互式 CLI 窗口，由用户在窗口内输入
+// /login 完成授权（一次性，令牌持久化在用户配置目录）。不再使用无头的 `codebuddy login`（已失效）。
 function startAiCliLogin(provider) {
   const prov = AI_CLI_PROVIDERS[provider] || AI_CLI_PROVIDERS.codebuddy;
   return (async () => {
     const { script, installed } = await _resolveAndCheckInstalled(prov);
     if (!installed) return { success: false, error: '未检测到 CodeBuddy CLI，请先安装：npm i -g @tencent-ai/codebuddy-code' };
     try {
-      const child = _spawnCli(script, ['login'], { detached: true, stdio: 'ignore' });
+      let child;
+      if (process.platform === 'win32') {
+        // Windows：开一个持久 CMD 窗口跑 codebuddy REPL（/k 保持窗口，用户可输入 /login）
+        child = spawn('cmd.exe', ['/k', 'codebuddy'], { detached: true, stdio: 'ignore', windowsHide: false });
+      } else {
+        // Linux/macOS：直接开交互式 REPL
+        child = _spawnCli(script, [], { detached: true, stdio: 'ignore' });
+      }
       child.unref();
-      return { success: true, message: '已在默认浏览器打开 CodeBuddy 登录页，请完成授权（一次性，令牌将持久保存）' };
+      return { success: true, message: '已打开 CodeBuddy 交互窗口，请在窗口内输入 /login 完成浏览器授权（一次性，令牌将持久保存）' };
     } catch (e) {
       return { success: false, error: String((e && e.message) || e) };
     }
@@ -790,6 +851,16 @@ app.use(express.static(path.join(__dirname, '..', 'web'), {
     res.setHeader('Expires', '0');
   }
 }));
+
+// 全局错误处理器 + 进程级未捕获异常记录（纯落盘，不阻断行为）
+app.use((err, req, res, next) => {
+  logger.error(err, { path: req.path || req.url, method: req.method });
+  if (res.headersSent) return next(err);
+  res.status(500).json({ success: false, error: err.message || '服务器内部错误' });
+});
+process.on('uncaughtException', (e) => logger.error(e, { phase: 'uncaughtException' }));
+process.on('unhandledRejection', (r) =>
+  logger.error(r instanceof Error ? r : new Error(String(r)), { phase: 'unhandledRejection' }));
 
 app.listen(PORT, () => {
   console.log(`[TestGen BFF] 监听 http://localhost:${PORT}  ·  知识系统 ${cfg.get().ks.apiBase}`);

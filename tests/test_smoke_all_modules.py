@@ -328,8 +328,8 @@ class TestFR020_UI_Visualization:
         )
 
     def test_graph_data_endpoint(self, bff_client, project):
-        """FR-021 · API 依赖图谱数据可获取（GET /api/graph-data）"""
-        r = bff_client.get("/api/graph-data", params={"project": project})
+        """FR-021 · 业务流依赖图谱数据可获取（GET /api/business-graph）"""
+        r = bff_client.get("/api/business-graph", params={"project": project})
         assert r.status_code in (200, 502), (
             f"图谱数据返回异常: {r.status_code} {r.text[:200]}"
         )
@@ -394,7 +394,7 @@ class TestRTM_Traceability:
             ("知识库项目Wiki", "/api/brain/pages?category=project-wiki", "GET"),
             ("知识库测试用例", "/api/brain/pages?category=test-cases", "GET"),
             ("知识库质量规则", "/api/brain/pages?category=quality-rules", "GET"),
-            ("API图谱数据", "/api/graph-data", "GET"),
+            ("业务流图谱数据", "/api/business-graph", "GET"),
             ("草稿列表", "/api/drafts", "GET"),
         ]
         for name, path, method in resources:

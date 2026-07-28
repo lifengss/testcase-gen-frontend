@@ -8,6 +8,7 @@ const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const logger = require('./logger');
 
 function resolveCliScript() {
   if (process.env.CODEBUDDY_CODE_PATH) return process.env.CODEBUDDY_CODE_PATH;
@@ -28,6 +29,7 @@ function modelsFileExists() {
 }
 
 async function callCodeBuddy(prompt, opts = {}) {
+  const t0 = Date.now();
   const cliScript = resolveCliScript();
   // 是否加载用户/项目设置源：仅在显式要求(opts.loadSettings)或本地存在 .codebuddy/models.json 时开启，
   // 以便 CodeBuddy 解析其中注册的自定义模型（含自有 endpoint/apiKey）。
@@ -61,12 +63,30 @@ async function callCodeBuddy(prompt, opts = {}) {
     child.stderr.on('data', (d) => { err += d.toString(); });
     const timer = setTimeout(() => {
       try { child.kill('SIGKILL'); } catch (_) {}
+      logger.llm({
+        provider: 'codebuddy', model: model, durationMs: Date.now() - t0,
+        promptLen: (prompt || '').length, success: false, error: 'codebuddy 生成超时',
+        prompt: prompt,
+      });
       reject(new Error('codebuddy 生成超时'));
     }, opts.timeout || 120000);
-    child.on('error', (e) => { clearTimeout(timer); reject(e); });
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      logger.llm({
+        provider: 'codebuddy', model: model, durationMs: Date.now() - t0,
+        promptLen: (prompt || '').length, success: false, error: String(e && e.message || e),
+        prompt: prompt,
+      });
+      reject(e);
+    });
     child.on('close', (code) => {
       clearTimeout(timer);
       if (code !== 0 && !out.trim()) {
+        logger.llm({
+          provider: 'codebuddy', model: model, durationMs: Date.now() - t0,
+          promptLen: (prompt || '').length, success: false,
+          error: 'codebuddy 退出码 ' + code + ': ' + err.slice(0, 600), prompt: prompt,
+        });
         reject(new Error('codebuddy 退出码 ' + code + ': ' + err.slice(0, 600)));
         return;
       }
@@ -81,7 +101,13 @@ async function callCodeBuddy(prompt, opts = {}) {
           }
         } catch (_) { /* 跳过非 JSON 行（进度/日志） */ }
       }
-      resolve(text.trim() || null);
+      const result = text.trim() || null;
+      logger.llm({
+        provider: 'codebuddy', model: model, durationMs: Date.now() - t0,
+        promptLen: (prompt || '').length, responseLen: (result || '').length,
+        success: result !== null, prompt: prompt, response: result,
+      });
+      resolve(result);
     });
   });
 }

@@ -5,9 +5,9 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 const state = { project: localStorage.getItem('tg_currentProject') || '', lastGenerated: '', scopeTree: [], funcTree: [] };
 const LS_KEY = 'tg_currentProject';
-let scopeMode = 'code';       // 'code' = 按代码模块；'func' = 按功能模块
+let scopeMode = 'code';       // 'code' = 按业务模块（源自业务流依赖图谱）；'func' = 按功能模块
 let funcAvailable = false;    // 是否已上传 PRD/需求列表，可抽取功能模块
-// 测试范围（代码模块）勾选/展开状态
+// 测试范围（业务模块）勾选/展开状态
 let explicit = new Set();
 let expandedSet = new Set();
 // 测试范围（功能模块）勾选/展开状态
@@ -310,18 +310,20 @@ const selAllChk = $('#scopeSelectAll');
 if (selAllChk) selAllChk.onchange = () => setScopeSelectAll(selAllChk.checked);
 // 测试范围标签页：按代码模块 / 按功能模块
 $$('#scopeTabs button').forEach(b => b.onclick = () => onScopeTab(b.dataset.t, b));
-// 测试范围模块树：从图谱派生（代码模块）/ 从项目描述 Wiki 抽取（功能模块），可展开复选
+// 测试范围模块树：从业务流依赖图谱按业务域派生（业务模块）/ 从项目描述 Wiki 抽取（功能模块），可展开复选
 async function loadScopes() {
   explicit = new Set(); expandedSet = new Set();
-  const gd = await api('GET', '/api/graph-data');
-  const nodes = (gd.data && gd.data.data && gd.data.data.nodes) || [];
-  const modules = nodes.filter(n => n.type === 'module');
-  let tree = modules.map(m => ({
-    id: m.id, label: m.label.replace(/^api-/, ''), type: 'module',
-    children: nodes.filter(n => n.type === 'function' && n.module === m.id)
-      .map(f => ({ id: f.id, label: f.label, type: 'function' }))
+  const bg = await api('GET', '/api/business-graph');
+  const g = (bg.data && bg.data.data) || { nodes: [], edges: [], domains: [] };
+  const domains = g.domains || [];
+  const domainName = id => (domains.find(d => d.id === id) || {}).name || id;
+  const byDomain = {};
+  (g.nodes || []).forEach(n => { const d = n.domain || 'DEFAULT'; (byDomain[d] = byDomain[d] || []).push(n); });
+  let tree = Object.keys(byDomain).map(d => ({
+    id: 'dom:' + d, label: domainName(d), type: 'domain',
+    children: byDomain[d].map(n => ({ id: n.id, label: n.title || n.api || n.id, type: 'node' }))
   }));
-  // 新项目（尚未上传代码）无代码模块，保持空列表，不注入 Demo 示例模块以免误导
+  // 新项目（尚未生成业务图谱）无业务模块，保持空列表，不注入 Demo 示例模块以免误导
   if (!tree.length) tree = [];
   state.scopeTree = tree;
   setScopeSelectAll(true); // 默认全选：让 explicit 真正装入全部模块 id，且全选勾选框与数据层对齐
@@ -379,7 +381,7 @@ function renderScopeNode(node, exp, expd, onToggle) {
 function renderScopeTree() {
   const root = $('#scopeTree');
   root.innerHTML = '';
-  if (!state.scopeTree.length) { root.innerHTML = '<div class="scope-hint">暂无代码模块，请先上传代码（压缩包或单文件）以解析 API 模块</div>'; return; }
+  if (!state.scopeTree.length) { root.innerHTML = '<div class="scope-hint">暂无业务模块，请先在「知识图谱」页生成业务流依赖图谱（上传 PRD/需求/API 文档后点击「生成业务图谱」）</div>'; return; }
   state.scopeTree.forEach(n => root.appendChild(renderScopeNode(n, explicit, expandedSet, (nd, c) => onScopeToggle(nd, c, explicit))));
 }
 function renderFuncTree() {
@@ -431,8 +433,8 @@ async function loadContext() {
   const st = (stats && stats.data && stats.data.data) || {};
   $('#ctxTC').textContent = (st['test-cases'] && st['test-cases'].count) || 0;
   $('#ctxSC').textContent = (st['test-scripts'] && st['test-scripts'].count) || 0;
-  const gd = await api('GET', '/api/graph-data');
-  const graph = (gd.data && gd.data.data) || { nodes: [], edges: [] };
+  const bg = await api('GET', '/api/business-graph');
+  const graph = normalizeGraph((bg.data && bg.data.data) || null);
   $('#ctxND').textContent = (graph.nodes || []).length;
   const refs = $('#ctxRefs'); refs.innerHTML = '<div class="ref muted">提交生成后展示检索命中</div>';
   renderMiniGraph(graph);
@@ -442,7 +444,7 @@ function renderHits(hits) {
   const box = $('#ctxRefs'); if (!box) return;
   box.innerHTML = '';
   if (!hits || !hits.length) { box.innerHTML = '<div class="ref muted">本次检索无命中</div>'; return; }
-  const labels = { history: '历史用例', rule: '质量门禁', wiki: '项目Wiki', dep: '代码依赖', entity: 'GBrain实体' };
+  const labels = { history: '历史用例', rule: '质量门禁', wiki: '项目Wiki', dep: 'API文档', entity: 'GBrain实体' };
   const groups = {};
   hits.forEach(h => { (groups[h.kind] = groups[h.kind] || []).push(h); });
   Object.keys(labels).forEach(k => {
@@ -1012,15 +1014,49 @@ function hideGraphTooltip() {
   if (tip) tip.style.display = 'none';
 }
 
-// ---- 知识图谱（全量）----
+// 将 KS 业务流依赖图谱（nodes 用 title、edges 用 from/to）归一化为前端力导向所需结构（label/type、source/target）
+function normalizeGraph(g) {
+  if (!g) return { nodes: [], edges: [] };
+  const nodes = (g.nodes || []).map(n => ({
+    ...n,
+    id: n.id,
+    label: n.title || n.label || n.id,
+    type: n.domain || n.type,
+    accent: true,
+  }));
+  const edges = (g.edges || []).map(e => ({ source: e.source || e.from, target: e.target || e.to }));
+  return { nodes, edges };
+}
+
+// ---- 知识图谱（全量）：业务流依赖图谱（取代代码图谱，黑盒测试不依赖源码）----
 async function loadGraph() {
-  const gd = await api('GET', '/api/graph-data');
-  const g = (gd.data && gd.data.data) || { nodes: [], edges: [] };
+  const bg = await api('GET', '/api/business-graph');
+  const raw = (bg.data && bg.data.data) || null;
   const wrap = $('#fullGraph');
   wrap.style.position = 'relative';
   wrap.style.minHeight = '520px';
-  renderInteractiveGraph(wrap, g);
+  if (!raw || !raw.nodes || !raw.nodes.length) {
+    wrap.innerHTML = '<div style="text-align:center;padding:80px 0;color:var(--text-3)">尚未生成业务图谱。点击右上角「生成业务图谱」基于项目 Wiki（PRD/需求/API 文档）生成；或在「导入」中上传相关资料后重生成。</div>';
+    return;
+  }
+  renderInteractiveGraph(wrap, normalizeGraph(raw));
 }
+
+// 生成/重生成业务流依赖图谱（POST /api/business-graph，ai=true 走 AI 通道）
+$('#genBizGraphBtn').onclick = async () => {
+  const btn = $('#genBizGraphBtn');
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = '生成中…';
+  try {
+    const r = await api('POST', '/api/business-graph', { query: { project: pickProject() }, body: { ai: true } });
+    if (r.ok) { toast('业务图谱生成完成', 'ok'); await loadGraph(); }
+    else { toast('业务图谱生成失败', 'err'); }
+  } catch (e) {
+    toast('生成失败：' + (e && e.message ? e.message : e), 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = old;
+  }
+};
 
 // ---- 新建项目 ----
 $('#newProjBtn').onclick = async () => {

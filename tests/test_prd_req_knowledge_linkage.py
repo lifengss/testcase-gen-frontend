@@ -122,9 +122,9 @@ class TestKnowledgeContextSmoke:
     # ------------------------------------------------------------------
 
     def test_graph_data_contains_doc_nodes(self, bff_client, project):
-        """FR-004/005-SM-05 · API 图谱数据可读（GET /api/graph-data）
-        验证：上传 PRD/需求后，图谱数据端点正常返回 nodes/edges 结构"""
-        r = bff_client.get("/api/graph-data", params={"project": project})
+        """FR-004/005-SM-05 · 业务流图谱数据可读（GET /api/business-graph）
+        验证：上传 PRD/需求后，业务流依赖图谱端点正常返回 nodes/edges/flows 结构"""
+        r = bff_client.get("/api/business-graph", params={"project": project})
         assert r.status_code in (200, 502), (
             f"图谱数据返回异常: {r.status_code} {r.text[:300]}"
         )

@@ -196,9 +196,9 @@ class TestPRDRequirementsUpload:
                 )
 
     def test_graph_data_includes_modules(self, bff_client, project):
-        """FR-005-05 · API 图谱包含文档派生节点（GET /api/graph-data）
-        验证：上传 PRD/需求后，图谱数据 API 仍可正常访问，节点结构完整"""
-        r = bff_client.get("/api/graph-data", params={"project": project})
+        """FR-005-05 · 业务流图谱包含文档派生节点（GET /api/business-graph）
+        验证：上传 PRD/需求后，业务流依赖图谱 API 仍可正常访问，节点结构完整"""
+        r = bff_client.get("/api/business-graph", params={"project": project})
         assert r.status_code in (200, 502), (
             f"图谱数据返回异常: {r.status_code} {r.text[:300]}"
         )

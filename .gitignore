@@ -10,6 +10,7 @@ tmp/
 
 # ===== 日志 / 运行产物 =====
 *.log
+logs/
 *.out
 *.err
 bff.log

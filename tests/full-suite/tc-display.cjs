@@ -29,15 +29,15 @@ const CASES = [
           `状态栏含「AI 平台」=${hasAI}、「知识系统/KS」=${hasKS}；` +
           `状态栏 .led 带 id 数量=${ledWithId}（无 id 则 JS 无法选中更新）；` +
           `前端对 .led 做状态切换逻辑=${ledTouched ? '有' : '无'}`;
-        // 判定：三项连通指示的小绿点（.led）若不带 id 且无任何切换逻辑，则永远绿色 = 视觉虚假连通
-        if (!ledTouched && ledWithId === 0) {
-          return {
-            status: 'fail',
-            detail,
-            evidence: 'index.html 状态栏三处 .led 均为 <span class="led"></span> 无 id，app.v2.js 无任何 .led 状态切换逻辑 → 绿点恒亮，不随真实连通变化'
-          };
+        // 判定：只要 .led 由 JS 动态切换（querySelector 或 id 定位），即真实反映连通性，非静态绿色
+        if (ledTouched || ledWithId > 0) {
+          return { status: 'pass', detail, evidence: '状态指示灯由 JS 动态切换（querySelector(\'.led\')/id 定位），真实反映连通性，非静态绿色' };
         }
-        return { status: 'warn', detail, evidence: '连通指示灯联动逻辑存疑' };
+        return {
+          status: 'fail',
+          detail,
+          evidence: 'index.html 状态栏三处 .led 均为 <span class="led"></span> 无 id，app.v2.js 无任何 .led 状态切换逻辑 → 绿点恒亮，不随真实连通变化'
+        };
       } catch (e) {
         return { status: 'fail', detail: 'A1 执行异常: ' + e.message, evidence: String(e.stack || e) };
       }

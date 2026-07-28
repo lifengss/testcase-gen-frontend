@@ -60,7 +60,7 @@ POST /api/source-upload { file, type=code, project=testCaseGenerator }
     content: `# Context-Harvester 并发采集超时不影响生成
 
 ## 背景
-生成前需只读采集 test-cases / quality-rules / graph-data / search，任一失败应降级。
+生成前需只读采集 test-cases / quality-rules / business-graph / search，任一失败应降级。
 
 ## 步骤
 - 关闭知识系统某检索端点

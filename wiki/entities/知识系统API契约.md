@@ -15,7 +15,7 @@
 | 删项目 | DELETE | `/api/projects/:id` | — |
 | 上传代码/PRD | POST | `/api/source-upload` | `file`/`content`, `type`, `project` |
 | 知识页读取 | GET | `/api/brain/pages` | `category`, `project` |
-| 图谱读取 | GET | `/api/graph-data` | `project` |
+| 业务流图谱读取 | GET | `/api/business-graph` | `project` |
 | 检索 | POST | `/api/search` | `{query,mode,limit,project}` |
 | 建草稿 | POST | `/api/drafts` | `{source,type,title,content,metadata,project}` |
 | 冲突检测 | POST | `/api/conflicts/detect` | `{project}` |
@@ -35,4 +35,4 @@
 ## 一致性约束
 - 上传代码 `type=code`；上传 PRD/需求 `type=prd`/`requirement`。
 - 所有 POST 写操作 body 或 URL 注入 `project`，缺失时报错（知识系统 resolveProject 兜底）。
-- 生成相关读操作（brain/pages、graph-data、search）为**只读**，不触发任何落库。
+- 生成相关读操作（brain/pages、business-graph、search）为**只读**，不触发任何落库。
