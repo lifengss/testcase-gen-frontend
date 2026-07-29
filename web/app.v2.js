@@ -18,7 +18,8 @@ function toast(msg, type = '') {
   const t = $('#toast'); t.textContent = msg; t.className = 'toast show ' + type;
   setTimeout(() => (t.className = 'toast ' + type), 2600);
 }
-function pickProject() { return state.project || 'testCaseGenerator'; }
+let defaultProject = 'default';
+function pickProject() { return state.project || defaultProject; }
 
 // ---- API 封装：自动注入当前 project ----
 async function api(method, path, { query = {}, body, form } = {}) {
@@ -774,7 +775,8 @@ $('#batchBtn').onclick = async () => {
 
 // ---- 回测（测试报告存档与回溯）----
 async function loadRetest() {
-  const r = await api('GET', '/api/brain/pages', { query: { category: 'test-reports' } });
+  // 回测报告沉淀为缺陷经验，统一从 defect-experience 分类读取
+  const r = await api('GET', '/api/brain/pages', { query: { category: 'defect-experience' } });
   const list = asArray(r.data);
   const box = $('#retestList'); if (!box) return; box.innerHTML = '';
   if (!list.length) { box.innerHTML = '<div class="card"><div class="d">暂无测试报告，请上传 Markdown/JSON 测试报告</div></div>'; return; }
