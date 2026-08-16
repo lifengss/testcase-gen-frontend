@@ -15,7 +15,8 @@ const CASES = [].concat(
   require('./tc-data-consistency.cjs'),
   require('./tc-flow.cjs'),
   require('./tc-ui.cjs'),
-  require('./tc-docs.cjs')
+  require('./tc-docs.cjs'),
+  require('./tc-git.cjs')
 );
 
 function ts() { return new Date().toISOString().replace(/[:.]/g, '-'); }
@@ -88,7 +89,11 @@ async function main() {
 
   const ctx = { bff: BASE_BFF, ks: BASE_KS, PROJECT, http: httpReq, asArray };
 
-  for (const tc of CASES) {
+  const caseFilter = process.env.CASE_FILTER ? String(process.env.CASE_FILTER).split(',').map((s) => s.trim()) : null;
+  const filtered = caseFilter ? CASES.filter((tc) => caseFilter.some((p) => tc.id.startsWith(p))) : CASES;
+  if (caseFilter) console.log(`CASE_FILTER=${caseFilter.join(',')} → 仅运行 ${filtered.length}/${CASES.length} 用例`);
+
+  for (const tc of filtered) {
     try {
       const r = await tc.run(ctx);
       rep.add(Object.assign({ id: tc.id, name: tc.name, group: tc.group, severity: tc.severity }, r || { status: 'info' }));

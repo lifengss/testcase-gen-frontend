@@ -231,6 +231,8 @@ $$('.nav-item').forEach(n => n.onclick = () => {
   if (view) { const tgt = $('#view-' + view); if (tgt) tgt.classList.add('active'); }
   if (view === 'graph') loadGraph();
   if (view === 'retest') loadRetest();
+  if (view === 'git-config') loadGitConfig();
+  if (view === 'git-status') loadGitStatus();
   if (view === 'tutorial') loadTutorial();
 });
 $('#psBtn').onclick = e => { e.stopPropagation(); $('#psMenu').classList.toggle('open'); };
@@ -786,6 +788,69 @@ async function loadRetest() {
     box.appendChild(el);
   });
 }
+// ---- Git 协同（对齐 KS §12 · S1：config/status/init/commit）----
+// 垂直构建：UI 直接消费 BFF 的 /api/git/*（BFF 在 KS 不可达或 GIT_MOCK=1 时回退契约一致假数据）。
+async function loadGitConfig() {
+  const box = $('#gitConfigBox'); if (!box) return;
+  const { ok, data } = await api('GET', '/api/git/config');
+  const cfg = (ok && data.data) || {};
+  box.innerHTML = `
+    <label class="fld"><span class="lbl">远端地址 (remote)</span>
+      <input class="inp" id="gitRemote" value="${escapeHtml(cfg.remote || '')}" placeholder="https://…/repo.git" /></label>
+    <label class="fld"><span class="lbl">分支 (branch)</span>
+      <input class="inp" id="gitBranch" value="${escapeHtml(cfg.branch || 'main')}" placeholder="main" /></label>
+    <label class="fld"><span class="lbl">用户名 (user.name)</span>
+      <input class="inp" id="gitUserName" value="${escapeHtml((cfg.user && cfg.user.name) || '')}" placeholder="可选" /></label>
+    <label class="fld"><span class="lbl">邮箱 (user.email)</span>
+      <input class="inp" id="gitUserEmail" value="${escapeHtml((cfg.user && cfg.user.email) || '')}" placeholder="可选" /></label>
+    ${cfg._mock ? '<div class="mock-tag">当前为 Mock 数据（KS 不可达或 GIT_MOCK=1）</div>' : ''}
+  `;
+}
+$('#gitSaveCfgBtn').onclick = async () => {
+  const msg = $('#gitCfgMsg'); if (!msg) return;
+  const payload = {
+    remote: $('#gitRemote')?.value?.trim() || '',
+    branch: $('#gitBranch')?.value?.trim() || 'main',
+    user: { name: $('#gitUserName')?.value?.trim() || '', email: $('#gitUserEmail')?.value?.trim() || '' },
+  };
+  const { ok, data } = await api('PUT', '/api/git/config', { body: payload });
+  if (ok && data.success) { msg.textContent = '配置已保存'; msg.className = 'test-msg ok'; loadGitConfig(); }
+  else msg.textContent = '保存失败：' + (data.error || JSON.stringify(data)); msg.className = 'test-msg err';
+};
+$('#gitInitBtn').onclick = async () => {
+  const msg = $('#gitCfgMsg'); if (!msg) return;
+  const { ok, data } = await api('POST', '/api/git/init', { body: {} });
+  if (ok && data.success) { msg.textContent = '仓库已初始化：' + (data.data?.branch || 'main'); msg.className = 'test-msg ok'; }
+  else msg.textContent = '初始化失败：' + (data.error || JSON.stringify(data)); msg.className = 'test-msg err';
+};
+
+async function loadGitStatus() {
+  const box = $('#gitStatusBox'); if (!box) return;
+  const { ok, data } = await api('GET', '/api/git/status');
+  const s = (ok && data.data) || {};
+  if (!s.initialized) {
+    box.innerHTML = `<div class="d">仓库尚未初始化${s._mock ? '（Mock 数据）' : ''}。请先在「Git 配置」中初始化，或等待 KS 侧就绪。</div>`;
+    return;
+  }
+  const section = (title, arr) => `<div class="git-sec"><div class="git-sec-h">${title}（${asArray(arr).length}）</div>${
+    asArray(arr).length ? asArray(arr).map(x => `<div class="git-row">${escapeHtml(typeof x === 'string' ? x : (x.path || x.name || JSON.stringify(x)))}</div>`).join('') : '<div class="git-row dim">无</div>'
+  }</div>`;
+  box.innerHTML = `
+    <div class="git-top">分支 <b>${escapeHtml(s.branch || 'main')}</b> · 领先 ${s.ahead || 0} · 落后 ${s.behind || 0}${s._mock ? ' · <span class="mock-tag">Mock</span>' : ''}</div>
+    ${section('未跟踪', s.untracked)}
+    ${section('已修改', s.modified)}
+    ${section('已暂存', s.staged)}
+  `;
+}
+$('#gitCommitBtn').onclick = async () => {
+  const msg = $('#gitStatusMsg'); if (!msg) return;
+  const cm = $('#gitCommitMsg'); const message = cm?.value?.trim() || '';
+  if (!message) { msg.textContent = '请填写提交说明'; msg.className = 'test-msg err'; return; }
+  const { ok, data } = await api('POST', '/api/git/commit', { body: { message } });
+  if (ok && data.success) { msg.textContent = '提交成功：' + (data.data?.commitHash || ''); msg.className = 'test-msg ok'; if (cm) cm.value = ''; loadGitStatus(); }
+  else msg.textContent = '提交失败：' + (data.error || JSON.stringify(data)); msg.className = 'test-msg err';
+};
+
 $('#retestFile').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   const form = new FormData(); form.append('file', f); form.append('type', 'test-report'); form.append('project', pickProject());

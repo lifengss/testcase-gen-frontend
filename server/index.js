@@ -99,6 +99,44 @@ app.get('/api/brain/pages', proxy('GET', '/api/brain/pages'));
 app.get('/api/brain/pages/:category/:id', proxy('GET', '/api/brain/pages/:category/:id'));
 app.post('/api/search', proxy('POST', '/api/search'));
 
+// Git 协同（对齐 KS §12 · S1）：config/status/init/commit
+// 垂直构建兜底：KS 不可达或 GIT_MOCK=1 时返回契约一致假数据，使前端 UI 链路先可测；
+// KS 就绪后自动切真端点（仅回退，不重写 UI）。
+// 注意：本组路由必须在通配 app.all('/api/*') 之前声明（第 ~821 行），避免被抢占。
+const GIT_MOCK = process.env.GIT_MOCK === '1';
+function gitMockData(kind, req) {
+  const project = (req.body && req.body.project) || (req.query && req.query.project) || DEFAULT_PROJECT;
+  const base = { success: true, data: { project, _mock: true } };
+  if (kind === 'config') return { ...base, data: { ...base.data, initialized: false, remote: '', branch: 'main', user: { name: '', email: '' } } };
+  if (kind === 'init') return { ...base, data: { ...base.data, initialized: true, branch: 'main', commitHash: null } };
+  if (kind === 'commit') return { ...base, data: { ...base.data, commitHash: 'mock' + Date.now().toString(16).slice(-7), message: 'auto: mock @ ' + new Date().toISOString(), branch: 'main' } };
+  if (kind === 'status') return { ...base, data: { ...base.data, initialized: false, branch: 'main', untracked: [], modified: [], staged: [], ahead: 0, behind: 0 } };
+  return base;
+}
+function gitHandler(method, kind, apiPath) {
+  return async (req, res) => {
+    const tryReal = !GIT_MOCK;
+    if (tryReal) {
+      try {
+        const { status, data } = await ksCall(method, apiPath, {
+          query: req.method === 'GET' ? req.query : undefined,
+          body: req.method !== 'GET' ? req.body : undefined,
+        });
+        return res.status(status).json(data);
+      } catch (e) {
+        logger.app('warn', 'Git 端点 KS 不可达，回退 Mock: ' + apiPath + ' :: ' + e.message);
+        // 落入下方 Mock 兜底
+      }
+    }
+    res.status(200).json(gitMockData(kind, req));
+  };
+}
+app.get('/api/git/config', gitHandler('GET', 'config', '/api/git/config'));
+app.put('/api/git/config', gitHandler('PUT', 'config', '/api/git/config'));
+app.post('/api/git/init', gitHandler('POST', 'init', '/api/git/init'));
+app.post('/api/git/commit', gitHandler('POST', 'commit', '/api/git/commit'));
+app.get('/api/git/status', gitHandler('GET', 'status', '/api/git/status'));
+
 // 草稿 / 冲突 / 质量 / 入库（回写编排，路径 B）
 app.get('/api/drafts', proxy('GET', '/api/drafts'));
 app.get('/api/drafts/:id', proxy('GET', '/api/drafts/:id'));
