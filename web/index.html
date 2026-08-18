@@ -305,6 +305,21 @@ input[type=file]{display:none}
 #draftEditModal .ta{width:100%;min-height:300px;background:#0b1220;color:#e6edf7;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;resize:vertical;box-sizing:border-box}
 #draftEditModal .inp{width:100%;background:#0b1220;color:#e6edf7;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:13px;box-sizing:border-box}
 .modal-foot{display:flex;justify-content:flex-end;gap:10px;padding-top:12px}
+/* 列表分页 / 排序 / 只读详情 */
+.flex-sp{flex:1}
+.sort-wrap{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-3)}
+.sort-wrap select{background:var(--surface);color:var(--text-1);border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:12px;cursor:pointer}
+.sort-wrap select:focus{outline:none;border-color:var(--aurora-1)}
+.pager{display:inline-flex;align-items:center;gap:8px}
+.page-info{font-size:12px;color:var(--text-3);white-space:nowrap}
+#detailModal .modal-card{width:760px;max-width:94vw}
+#settingsModal .modal-card{width:960px;max-width:96vw}
+#settingsModal .settings-layout{min-height:420px}
+#settingsModal .settings-panes{max-height:70vh}
+.detail-meta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.detail-meta .tag{font-size:11px;padding:3px 10px;border-radius:999px;border:1px solid var(--border);color:var(--text-2);background:rgba(255,255,255,.03)}
+.detail-content{max-height:60vh;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:16px;background:rgba(255,255,255,.02)}
+.act-btn.view:hover{color:#a78bfa;border-color:rgba(167,139,250,.45);background:rgba(167,139,250,.1)}
 /* ---- 使用教程 ---- */
 .tut-wrap{display:grid;grid-template-columns:248px 1fr;gap:24px;align-items:start}
 .tut-toc{position:sticky;top:0;align-self:start;max-height:calc(100vh - 120px);overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
@@ -331,18 +346,115 @@ input[type=file]{display:none}
 .ks-block-card code{background:var(--surface-2);padding:1px 6px;border-radius:5px;color:var(--aurora-1);font-family:var(--font-mono)}
 .ks-block-err{font-size:12px;color:#ff8d6b;word-break:break-all;margin-bottom:18px !important}
 .ks-block-card .btn-primary{margin:0 auto}
-/* ---- Git 协同表单（S1） ---- */
-.git-form{display:flex;flex-direction:column;gap:14px}
+/* ---- Git 协同（重新设计） ---- */
+.git-form{display:flex;flex-direction:column;gap:16px}
 .git-form .fld{display:flex;flex-direction:column;gap:6px}
 .git-form .lbl{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--text-3)}
 .git-form .inp{width:100%;background:#0b1220;color:#e6edf7;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:9px 11px;font-size:13px;box-sizing:border-box}
 .git-form .inp:focus{outline:none;border-color:var(--aurora-1)}
-.mock-tag{display:inline-block;font-size:11px;color:#ffcf66;background:rgba(255,207,102,.12);border:1px solid rgba(255,207,102,.3);border-radius:6px;padding:1px 8px;margin-top:4px}
-.git-top{font-size:13px;color:var(--text-2);margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.git-sec{margin-bottom:14px}
-.git-sec-h{font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--text-3);margin-bottom:6px}
-.git-row{font-family:var(--font-mono);font-size:12.5px;color:var(--text-1);padding:5px 10px;border-left:2px solid var(--border);background:rgba(255,255,255,.02);border-radius:0 6px 6px 0;margin-bottom:4px}
-.git-row.dim{color:var(--text-3);font-style:italic}
+.mock-tag{display:inline-block;font-size:10px;color:#ffcf66;background:rgba(255,207,102,.12);border:1px solid rgba(255,207,102,.3);border-radius:6px;padding:1px 8px;vertical-align:middle}
+
+/* 仓库信息条 */
+.git-top{font-size:13px;color:var(--text-2);margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px}
+.git-top b{color:var(--text-1);font-family:var(--font-mono);font-size:12.5px}
+.git-top .git-branch-tag{display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:999px;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.25);color:var(--aurora-1);font-size:12px;font-family:var(--font-mono);font-weight:600}
+
+/* 操作工具栏 */
+.git-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:16px}
+.git-toolbar .git-msg-input{flex:1;min-width:200px;height:36px;background:#0b1220;color:var(--text-1);border:1px solid var(--border);border-radius:8px;padding:0 12px;font-size:13px;font-family:var(--font-body)}
+.git-toolbar .git-msg-input:focus{outline:none;border-color:var(--aurora-1);box-shadow:0 0 0 3px rgba(34,211,238,.1)}
+.git-toolbar .git-msg-input::placeholder{color:var(--text-3)}
+.git-act-group{display:flex;gap:6px;flex-wrap:wrap}
+.git-act-btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-2);font-size:12.5px;font-weight:600;cursor:pointer;transition:.18s var(--ease);font-family:var(--font-body)}
+.git-act-btn:hover{border-color:var(--border-strong);background:var(--surface-2);color:var(--text-1);transform:translateY(-1px)}
+.git-act-btn svg{flex:none;opacity:.8}
+.git-act-btn.primary{background:var(--aurora-grad);color:#06121b;border-color:transparent;box-shadow:0 4px 16px rgba(99,102,241,.3)}
+.git-act-btn.primary:hover{box-shadow:0 6px 22px rgba(99,102,241,.45);transform:translateY(-2px)}
+
+/* 状态卡片 */
+.git-stat-card{position:relative;padding:16px 18px;border-radius:12px;border:1px solid var(--border);background:var(--surface);backdrop-filter:blur(12px);transition:.18s var(--ease);overflow:hidden}
+.git-stat-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:3px;background:var(--accent,var(--aurora-1))}
+.git-stat-card:hover{border-color:var(--border-strong);transform:translateY(-2px);box-shadow:0 10px 30px rgba(0,0,0,.3)}
+.git-stat-card .git-stat-icon{position:absolute;top:14px;right:14px;width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--accent-bg,rgba(34,211,238,.1));color:var(--accent,var(--aurora-1))}
+.git-stat-card .git-stat-icon svg{opacity:.7}
+.git-stat-card .k{font-size:11px;color:var(--text-3);letter-spacing:.4px;text-transform:uppercase}
+.git-stat-card .v{font-family:var(--font-display);font-size:24px;font-weight:600;margin:6px 0 4px;color:var(--text-1);font-variant-numeric:tabular-nums;line-height:1}
+.git-stat-card .d{font-size:11.5px;color:var(--text-2)}
+.git-stat-card.alert{--accent:#f59e0b;--accent-bg:rgba(245,158,11,.1)}
+.git-stat-card.danger{--accent:#ef4444;--accent-bg:rgba(239,68,68,.1)}
+.git-stat-card.ok{--accent:#34d399;--accent-bg:rgba(52,211,153,.1)}
+
+/* 文件列表 */
+.git-sec{margin-bottom:16px}
+.git-sec-h{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--text-3);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.git-sec-h .git-count{font-size:10px;padding:1px 7px;border-radius:999px;background:var(--surface-2);color:var(--text-2);font-family:var(--font-mono)}
+.git-file-list{display:flex;flex-direction:column;gap:3px}
+.git-file{display:flex;align-items:center;gap:10px;padding:7px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-family:var(--font-mono);font-size:12.5px;color:var(--text-1);transition:.15s var(--ease);cursor:default}
+.git-file:hover{background:var(--surface-2);border-color:var(--border-strong)}
+.git-file.clickable{cursor:pointer}
+.git-file.clickable:hover{background:rgba(168,85,247,.08);border-color:rgba(168,85,247,.25)}
+.git-file .git-file-icon{flex:none;width:16px;height:16px;display:grid;place-items:center;opacity:.6}
+.git-file .git-file-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.git-file .git-file-badge{flex:none;font-size:10px;padding:1px 7px;border-radius:4px;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.git-file .git-file-badge.untracked{background:rgba(94,107,130,.18);color:var(--text-3)}
+.git-file .git-file-badge.modified{background:rgba(245,158,11,.14);color:#fbbf24}
+.git-file .git-file-badge.staged{background:rgba(52,211,153,.14);color:#34d399}
+.git-file .git-file-badge.conflict{background:rgba(239,68,68,.14);color:#f87171}
+.git-file.dim{color:var(--text-3);font-style:italic}
+.git-hint{font-size:11.5px;color:var(--text-3);margin-top:8px;line-height:1.5}
+.git-link{color:var(--aurora-1);cursor:pointer;text-decoration:underline}
+
+/* 提交历史（时间线风格） */
+.git-log{display:flex;flex-direction:column}
+.git-commit-item{display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--border);position:relative}
+.git-commit-item:last-child{border-bottom:none}
+.git-commit-dot{flex:none;width:28px;height:28px;border-radius:50%;background:var(--surface-2);border:2px solid var(--border-strong);display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--text-2);font-family:var(--font-display);margin-top:1px}
+.git-commit-body{flex:1;min-width:0}
+.git-commit-msg{font-size:13px;color:var(--text-1);font-weight:500;margin-bottom:4px;line-height:1.4}
+.git-commit-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--text-3)}
+.git-commit-meta .git-hash{font-family:var(--font-mono);color:var(--aurora-1);background:rgba(34,211,238,.08);padding:1px 7px;border-radius:4px;font-size:11px}
+.git-commit-meta .git-author{color:var(--text-2)}
+
+/* Diff 视图 */
+.git-diff-file{margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.git-diff-header{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--surface-2);border-bottom:1px solid var(--border);font-family:var(--font-mono);font-size:12.5px}
+.git-diff-path{color:var(--text-1);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.git-diff-stat{font-size:11px;display:flex;gap:8px}
+.git-diff-stat .add{color:#34d399}
+.git-diff-stat .del{color:#f87171}
+.git-diff-pre{background:#0b1220;padding:10px 14px;font-size:11.5px;font-family:var(--font-mono);color:var(--text-2);max-height:280px;overflow:auto;white-space:pre-wrap;line-height:1.6}
+.git-diff-pre .diff-add{color:#34d399;background:rgba(52,211,153,.06)}
+.git-diff-pre .diff-del{color:#f87171;background:rgba(239,68,68,.06)}
+.git-diff-pre .diff-hunk{color:var(--aurora-1);background:rgba(34,211,238,.06)}
+
+/* 分支管理 */
+.git-branch-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:13px;color:var(--text-1);transition:.15s var(--ease);cursor:pointer;margin-bottom:4px}
+.git-branch-item:hover{background:var(--surface-2);border-color:var(--border-strong)}
+.git-branch-item.current{background:rgba(34,211,238,.06);border-color:rgba(34,211,238,.2)}
+.git-branch-item .git-branch-name{flex:1;font-family:var(--font-mono);font-size:12.5px}
+.git-branch-item .git-branch-current-tag{font-size:10px;padding:1px 8px;border-radius:4px;background:var(--aurora-grad);color:#06121b;font-weight:700;letter-spacing:.3px}
+
+/* 冲突编辑器 */
+.git-conflict{border:1px solid rgba(245,158,11,.25);border-radius:12px;padding:18px;background:rgba(245,158,11,.03)}
+.git-conflict-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.git-conflict-head .git-conflict-icon{width:28px;height:28px;border-radius:8px;background:rgba(245,158,11,.12);display:grid;place-items:center;color:#fbbf24}
+.git-conflict-head .git-conflict-title{font-size:14px;font-weight:600;color:var(--text-1)}
+.git-conflict-head .git-conflict-sub{font-size:11.5px;color:var(--text-3)}
+.git-conflict-edit{background:#0b1220;border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:11.5px;color:var(--text-2);max-height:340px;overflow:auto;white-space:pre;width:100%;box-sizing:border-box;font-family:var(--font-mono);resize:vertical;line-height:1.6}
+.git-conflict-edit:focus{outline:none;border-color:rgba(245,158,11,.4);box-shadow:0 0 0 3px rgba(245,158,11,.08)}
+.git-conflict-actions{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap}
+
+/* 系统设置：左侧 tab 导航 + 右侧内容（对齐 KS 协同页布局） */
+.settings-layout{display:grid;grid-template-columns:180px 1fr;gap:0;min-height:340px}
+.settings-nav{display:flex;flex-direction:column;gap:4px;padding:4px;border-right:1px solid var(--border)}
+.settings-nav .stab{display:flex;align-items:center;gap:9px;text-align:left;border:none;background:transparent;color:var(--text-2);padding:11px 13px;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;font-family:var(--font-body);transition:.18s var(--ease)}
+.settings-nav .stab:hover{background:rgba(255,255,255,.04);color:var(--text-1)}
+.settings-nav .stab.on{background:linear-gradient(100deg,rgba(99,102,241,.18),rgba(168,85,247,.14));color:#fff;box-shadow:inset 0 0 0 1px var(--border-strong)}
+.settings-nav .stab svg{flex:none;opacity:.85}
+.settings-panes{position:relative;padding:6px 4px 6px 20px;overflow:auto;max-height:62vh}
+.settings-panes .spane{display:none}
+.settings-panes .spane.on{display:block;animation:fadeIn .22s var(--ease)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 </style>
 </head>
 <body>
@@ -364,14 +476,13 @@ input[type=file]{display:none}
     <div class="nav-item" data-view="projects"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></span>项目空间</div>
     <div class="nav-item active" data-view="generator"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4z"/><path d="M19 14l.9 2.1 2.1.9-2.1.9L19 20l-.9-2.1-2.1-.9 2.1-.9z"/></svg></span>生成中心</div>
     <div class="nav-item" data-view="review"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span>草稿审阅</div>
-    <div class="nav-item" data-view="backflow"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg></span>执行回流</div>
     <div class="nav-group">知识</div>
     <div class="nav-item" data-view="commit"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span>入库看板</div>
+    <div class="nav-item" data-view="search"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>知识检索</div>
     <div class="nav-item" data-view="graph"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg></span>知识图谱</div>
     <div class="nav-item" data-view="retest"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5.5L5 18a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3L14 8.5V3"/></svg></span>回测</div>
-    <div class="nav-item" data-view="git-config"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>Git 配置</div>
-    <div class="nav-item" data-view="git-status"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M6 9v9M6 9a3 3 0 0 0 3 3h6"/></svg></span>Git 状态</div>
-    <div class="nav-group">帮助</div>
+    <div class="nav-item" data-view="git"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M6 9v9M6 9a3 3 0 0 0 3 3h6"/><circle cx="12" cy="12" r="2.4" opacity=".5"/></svg></span>Git 协同</div>
+    <div class="nav-sep">帮助</div>
     <div class="nav-item" data-view="tutorial"><span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>使用教程</div>
     <div class="nav-sep"><b>当前项目</b> <span id="sidePid">—</span><br/><span id="sideStat">缓冲 0 · 已入库 0</span></div>
     <div class="nav-item" id="gearNav"><i><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></i>系统设置</div>
@@ -404,7 +515,7 @@ input[type=file]{display:none}
                 <div class="upload-arrow"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></div>
               </label>
               <label class="upload-card prd">
-                <input type="file" id="prdFile" accept=".md,.txt,.pdf"/>
+                <input type="file" id="prdFile" accept=".md,.txt,.pdf,.docx,.doc"/>
                 <div class="upload-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
                 <div class="upload-info">
                   <div class="upload-title">PRD 文档</div>
@@ -413,7 +524,7 @@ input[type=file]{display:none}
                 <div class="upload-arrow"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></div>
               </label>
               <label class="upload-card req">
-                <input type="file" id="reqFile" accept=".md,.txt,.pdf"/>
+                <input type="file" id="reqFile" accept=".md,.txt,.pdf,.docx,.doc"/>
                 <div class="upload-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></div>
                 <div class="upload-info">
                   <div class="upload-title">需求列表</div>
@@ -442,65 +553,106 @@ input[type=file]{display:none}
     <!-- 草稿审阅 -->
     <section class="view" id="view-review"><div class="view-head"><div><h1>草稿审阅</h1><p>人工编辑与 AI 生成的草稿（human_edit），可单条入库</p></div></div><div id="reviewList"></div></section>
 
-    <!-- 执行回流 -->
-    <section class="view" id="view-backflow">
-      <div class="view-head"><div><h1>执行回流</h1><p>上传 JUnit/pytest XML 或 JSON 摘要 → 解析失败 → 结构化缺陷草稿（exec_backflow）</p></div></div>
-      <div class="upload-zone" style="max-width:480px;margin-bottom:20px">
-        <div class="upload-zone-title">上传执行报告</div>
+    <!-- 回测（测试/执行报告统一回流：直接沉淀入库 或 草稿审核） -->
+    <section class="view" id="view-retest">
+      <div class="view-head"><div><h1>回测 · 报告回流</h1><p>测试/执行报告统一回流：可解析拆分后直接沉淀为知识库「缺陷经验/测试用例」，也可整篇生成缺陷草稿进草稿箱人工审核；重测计划按最近失败权重 + 严重度加权排序，历史失败用例自动置顶。</p></div></div>
+      <div class="upload-zone" style="max-width:560px;margin-bottom:20px">
+        <div class="upload-zone-title">上传测试 / 执行报告</div>
         <div class="upload-grid">
           <label class="upload-card code">
-            <input type="file" id="reportFile" accept=".xml,.json"/>
-            <div class="upload-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg></div>
+            <input type="file" id="retestFile" accept=".md,.txt,.json,.xml"/>
+            <div class="upload-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5.5L5 18a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3L14 8.5V3"/></svg></div>
             <div class="upload-info">
-              <div class="upload-title">执行报告</div>
-              <div class="upload-desc">JUnit / pytest XML 或 JSON 摘要</div>
+              <div class="upload-title">测试 / 执行报告</div>
+              <div class="upload-desc">Markdown / JSON / JUnit XML</div>
             </div>
             <div class="upload-arrow"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></div>
           </label>
         </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">
+          <div class="seg" id="retestModeSeg"><button class="on" data-mode="commit">回测回流 · 沉淀入库</button><button data-mode="draft">执行回流 · 草稿审核</button></div>
+          <span class="hint" id="retestModeHint">「回测回流·沉淀入库」：报告解析拆分后<b>直接写入知识库</b>（缺陷经验/测试用例），无需人工确认，立即参与重测计划。 「执行回流·草稿审核」：整篇生成缺陷草稿进<b>草稿箱</b>，人工确认后入库，便于先核对再沉淀。</span>
+        </div>
       </div>
+      <div class="panel" style="max-width:920px">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+          <div class="seg" id="retestScopeSeg"><button class="on" data-scope="all">全量</button><button data-scope="failure">仅失败</button><button data-scope="high">高严重度</button></div>
+          <span class="hint">加权：最近失败 0.6 · 严重度 0.4（priority = 0.4×状态 + 0.6×近期 + 0.4×严重度）</span>
+        </div>
+        <div class="test-row">
+          <button class="btn btn-primary" id="retestPlanBtn"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> 生成重测计划</button>
+          <span class="test-msg" id="retestPlanMsg"></span>
+        </div>
+        <div id="retestPlanList" style="margin-top:14px"></div>
+      </div>
+      <div id="retestList"></div>
+      <div style="display:flex;align-items:baseline;gap:8px;margin:18px 0 10px"><h2 style="margin:0;font-size:16px">待审核回流草稿（执行回流）</h2><span class="hint">仅在「执行回流 · 草稿审核」模式下生成（source=exec_backflow），人工确认后入库；与「回测回流 · 沉淀入库」直接进知识库不同，此处需先审核</span></div>
       <div id="backflowList"></div>
     </section>
 
-    <!-- 回测 -->
-    <section class="view" id="view-retest">
-      <div class="view-head"><div><h1>回测</h1><p>全量测试报告存档与回溯。上传的测试报告将沉淀为知识库「缺陷经验」，供团队回测复盘。</p></div></div>
-      <div class="upload-zone" style="max-width:480px;margin-bottom:20px">
-        <div class="upload-grid">
-          <label class="upload-card code">
-            <input type="file" id="retestFile" accept=".md,.txt,.json"/>
-            <div class="upload-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5.5L5 18a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3L14 8.5V3"/></svg></div>
-            <div class="upload-info">
-              <div class="upload-title">测试报告</div>
-              <div class="upload-desc">Markdown / JSON 测试报告</div>
-            </div>
-            <div class="upload-arrow"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></div>
-          </label>
+    <!-- 知识检索（M3：keyword / hybrid 模式切换） -->
+    <section class="view" id="view-search">
+      <div class="view-head"><div><h1>知识检索</h1><p>检索知识库页面。关键词模式走 BM25 全文匹配；混合模式叠加本地 BGE 向量语义匹配（离线）。</p></div></div>
+      <div class="panel" style="max-width:880px">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+          <input class="ipt" id="kbSearchInput" placeholder="输入检索关键词，如：登录 / 鉴权 / 支付 / 冒烟测试…" style="flex:1;min-width:220px" />
+          <div class="seg" id="kbModeSeg"><button class="on" data-mode="keyword">关键词</button><button data-mode="hybrid">混合语义</button></div>
+          <button class="btn btn-primary" id="kbSearchBtn"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> 检索</button>
         </div>
+        <div class="test-msg" id="kbSearchMeta" style="margin-bottom:10px"></div>
+        <div id="kbSearchResults"><div class="scope-hint" style="padding:24px;text-align:center">输入关键词并点击「检索」。混合语义模式需知识系统已加载本地 BGE embedding 模型。</div></div>
       </div>
-      <div id="retestList"></div>
     </section>
 
-    <!-- Git 协同（对齐 KS §12 · S1：config/status/init/commit） -->
-    <section class="view" id="view-git-config">
-      <div class="view-head"><div><h1>Git 配置</h1><p>配置知识库 Git 远端（仓库地址 / 分支 / 凭据）。S1 仅覆盖配置读写，提交/同步在后续里程碑。</p></div></div>
-      <div class="panel" style="max-width:560px">
-        <div id="gitConfigBox" class="git-form"></div>
-        <div style="margin-top:16px;display:flex;gap:10px">
-          <button class="btn btn-primary" id="gitSaveCfgBtn">保存配置</button>
-          <button class="btn" id="gitInitBtn">初始化仓库</button>
+    <!-- Git 协同 -->
+    <section class="view" id="view-git">
+      <div class="view-head">
+        <div><h1>Git 协同</h1><p>沉淀型用例资产经 Git 同步到团队仓库：查看仓库状态、提交与远端同步，并解决合并冲突。仓库配置见「系统设置 → Git 协同」。</p></div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <div class="seg" id="gitScopeSeg" style="margin-bottom:0"><button class="on" data-scope="local">本地仓库</button><button data-scope="shared">共享库</button></div>
+          <button class="btn btn-ghost" id="gitSettingsBtn"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> 仓库配置</button>
         </div>
-        <div id="gitCfgMsg" class="test-msg" style="margin-top:12px"></div>
       </div>
-    </section>
-    <section class="view" id="view-git-status">
-      <div class="view-head"><div><h1>Git 状态</h1><p>查看当前分支、未跟踪 / 修改 / 暂存文件、领先 / 落后提交数，并支持提交。</p></div><button class="btn btn-primary" id="gitCommitBtn">提交</button></div>
-      <div class="panel" style="max-width:720px">
-        <div id="gitStatusBox" class="git-form"></div>
-        <div style="margin-top:12px">
-          <input class="inp" id="gitCommitMsg" placeholder="提交说明（必填）" style="width:100%;max-width:480px" />
+
+      <!-- 状态概览：卡片网格 -->
+      <div class="card-grid" id="gitStatusCards" style="margin-bottom:18px"></div>
+
+      <!-- 操作工具栏 -->
+      <div class="git-toolbar" id="gitToolbar">
+        <input class="git-msg-input" id="gitCommitMsg" placeholder="提交说明（必填）..." />
+        <div class="git-act-group">
+          <button class="git-act-btn primary" id="gitCommitBtn"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg> 提交</button>
+          <button class="git-act-btn" id="gitPullBtn"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg> 拉取</button>
+          <button class="git-act-btn" id="gitPushBtn"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9"/><path d="M7 14l5-5 5 5"/><path d="M5 3h14"/></svg> 推送</button>
+          <button class="git-act-btn" id="gitFetchBtn"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg> 获取</button>
         </div>
-        <div id="gitStatusMsg" class="test-msg" style="margin-top:12px"></div>
+        <div class="git-act-group" style="margin-left:auto">
+          <button class="git-act-btn" id="gitLogBtn"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> 历史</button>
+          <button class="git-act-btn" id="gitDiffBtn"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M5 8l4-4 4 4"/><path d="M11 16l4 4 4-4"/></svg> Diff</button>
+          <button class="git-act-btn" id="gitBranchesBtn"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg> 分支</button>
+        </div>
+      </div>
+
+      <!-- 仓库信息 + 文件列表 -->
+      <div class="panel" id="gitStatusPanel">
+        <div class="git-top" id="gitTopLine"></div>
+        <div id="gitStatusBox" class="git-form"></div>
+        <div id="gitSyncMsg" class="test-msg" style="margin-top:12px"></div>
+        <div id="gitLogBox" class="git-log" style="margin-top:16px;display:none"></div>
+        <div id="gitDiffBox" class="git-diff" style="margin-top:16px;display:none"></div>
+        <div id="gitBranchesBox" class="git-form" style="margin-top:16px;display:none"></div>
+      </div>
+
+      <!-- 冲突处理 -->
+      <div class="panel" style="margin-top:18px">
+        <div class="panel-title">
+          <span style="display:flex;align-items:center;gap:8px"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> 冲突处理</span>
+          <span class="badge" id="gitConflictCount" style="background:rgba(245,158,11,.14);color:#fbbf24">0</span>
+          <button class="btn btn-ghost btn-sm" id="gitConflictRefreshBtn" style="margin-left:auto"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg> 刷新</button>
+        </div>
+        <div id="gitConflictList" class="git-form"></div>
+        <div id="gitConflictEditor" class="git-conflict" style="margin-top:16px;display:none"></div>
+        <div id="gitConflictMsg" class="test-msg" style="margin-top:12px"></div>
       </div>
     </section>
 
@@ -532,50 +684,77 @@ input[type=file]{display:none}
     <div class="modal-card">
       <div class="modal-head"><h3><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> 系统设置</h3><button class="modal-close" id="settingsClose" title="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
       <div class="modal-body">
-        <div class="sec-title">知识库系统（KS）</div>
-        <div class="field"><label>KS API 地址</label><input class="ipt" id="setKsApi" placeholder="http://localhost:3000"/></div>
-        <div class="sec-title">AI 平台</div>
-        <div class="field"><label>供应商</label>
-          <select class="select" id="setAiProvider">
-            <option value="openai">OpenAI 兼容（豆包 / 火山方舟 / TokenHub …）</option>
-            <option value="codebuddy">CodeBuddy（内置 / 自定义模型）</option>
-            <option value="none">关闭（仅本地模板兜底）</option>
-          </select>
-        </div>
+        <div class="settings-layout">
+          <nav class="settings-nav" id="settingsNav">
+            <button class="stab on" data-stab="platform"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg>知识库与 AI</button>
+            <button class="stab" data-stab="git"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7M6 9v9M6 9a3 3 0 0 0 3 3h6"/></svg>Git 协同</button>
+          </nav>
+          <div class="settings-panes">
+            <!-- Tab 1：知识库与 AI -->
+            <div class="spane on" data-spane="platform">
+              <div class="sec-title">知识库系统（KS）</div>
+              <div class="field"><label>KS API 地址</label><input class="ipt" id="setKsApi" placeholder="http://localhost:3000"/></div>
+              <div class="sec-title">AI 平台</div>
+              <div class="field"><label>供应商</label>
+                <select class="select" id="setAiProvider">
+                  <option value="kimi">Kimi CLI（免登录直连自有端点，推荐）</option>
+                  <option value="openai">OpenAI 兼容（豆包 / 火山方舟 / TokenHub …）</option>
+                  <option value="codebuddy">CodeBuddy（内置 / 自定义模型）</option>
+                  <option value="none">关闭（仅本地模板兜底）</option>
+                </select>
+              </div>
 
-        <!-- CodeBuddy 专属：内置模型下拉 / 自定义模型切换 -->
-        <div id="cbSourceWrap" style="display:none">
-          <div class="field"><label>模型来源</label>
-            <label class="radio"><input type="radio" name="cbSrc" id="cbBuiltin" checked/> CodeBuddy 内置模型</label>
-            <label class="radio"><input type="radio" name="cbSrc" id="cbCustom"/> 自定义模型（自有 endpoint）</label>
-          </div>
-          <div class="field" id="cbModelField"><label>内置模型</label>
-            <select class="select" id="cbModel"><option>加载中…</option></select>
-          </div>
-        </div>
+              <!-- CodeBuddy 专属：内置模型下拉 / 自定义模型切换 -->
+              <div id="cbSourceWrap" style="display:none">
+                <div class="field"><label>模型来源</label>
+                  <label class="radio"><input type="radio" name="cbSrc" id="cbBuiltin" checked/> CodeBuddy 内置模型</label>
+                  <label class="radio"><input type="radio" name="cbSrc" id="cbCustom"/> 自定义模型（自有 endpoint）</label>
+                </div>
+                <div class="field" id="cbModelField"><label>内置模型</label>
+                  <select class="select" id="cbModel"><option>加载中…</option></select>
+                </div>
+              </div>
 
-        <!-- 自定义模型配置（CodeBuddy 自定义 / OpenAI 共用）-->
-        <div class="field" id="setEndpointField" style="display:none"><label>API Endpoint（OpenAI 兼容）</label><input class="ipt" id="setAiEndpoint" placeholder="https://.../v1/chat/completions"/></div>
-        <div class="field" id="setKeyField" style="display:none"><label>API Key</label><input class="ipt" id="setAiKey" type="password" placeholder="sk-..."/></div>
-        <div class="field" id="setModelField" style="display:none"><label>模型</label><input class="ipt" id="setAiModel" placeholder="my-hy3（注册到 CodeBuddy 的模型 id）"/></div>
-        <!-- 仅 CodeBuddy 通道生效：agent 最大工具调用/turn 轮次，过大生成更充分但更慢且易超预算 -->
-        <div class="field" id="setMaxTurnsField" style="display:none"><label>最大生成轮次 (maxTurns)</label><input class="ipt" id="setMaxTurns" type="number" min="1" max="50" placeholder="8"/><span class="hint">CodeBuddy agent 的最大 turn 轮次；生成步骤多时调大可避免「Max turns exceeded」，建议 6–12</span></div>
-        <div class="hint" id="setAiNote"></div>
-        <div class="test-row"><button class="btn btn-ghost btn-sm" id="setTest">测试连接</button><span class="test-msg" id="setTestMsg"></span></div>
+              <!-- 自定义模型配置（CodeBuddy 自定义 / OpenAI 共用）-->
+              <div class="field" id="setEndpointField" style="display:none"><label>API Endpoint（OpenAI 兼容）</label><input class="ipt" id="setAiEndpoint" placeholder="https://.../v1/chat/completions"/></div>
+              <div class="field" id="setKeyField" style="display:none"><label>API Key</label><input class="ipt" id="setAiKey" type="password" placeholder="sk-..."/></div>
+              <div class="field" id="setModelField" style="display:none"><label>模型</label><input class="ipt" id="setAiModel" placeholder="my-hy3（注册到 CodeBuddy 的模型 id）"/></div>
+              <!-- 仅 CodeBuddy 通道生效：agent 最大工具调用/turn 轮次，过大生成更充分但更慢且易超预算 -->
+              <div class="field" id="setMaxTurnsField" style="display:none"><label>最大生成轮次 (maxTurns)</label><input class="ipt" id="setMaxTurns" type="number" min="1" max="50" placeholder="8"/><span class="hint">CodeBuddy agent 的最大 turn 轮次；生成步骤多时调大可避免「Max turns exceeded」，建议 6–12</span></div>
+              <div class="hint" id="setAiNote"></div>
+              <div class="test-row"><button class="btn btn-ghost btn-sm" id="setTest">测试连接</button><span class="test-msg" id="setTestMsg"></span></div>
 
-        <div class="sec-title">AI CLI 登录（CodeBuddy）</div>
-        <div class="card" id="aiCliCard">
-          <div class="ai-cli-row">
-            <span class="badge" id="aiCliBadge">检测中…</span>
-            <span class="ai-cli-name" id="aiCliName">CodeBuddy CLI</span>
+              <div class="sec-title">AI CLI 状态（Kimi / CodeBuddy）</div>
+              <div class="card" id="aiCliCard">
+                <div class="ai-cli-row">
+                  <span class="badge" id="aiCliBadge">检测中…</span>
+                  <span class="ai-cli-name" id="aiCliName">AI CLI</span>
+                </div>
+                <p class="hint" id="aiCliMsg">正在检测 AI CLI 状态…</p>
+                <div class="test-row">
+                  <button class="btn btn-primary btn-sm" id="aiCliLogin" style="display:none">登录</button>
+                  <button class="btn btn-ghost btn-sm" id="aiCliRefresh">刷新状态</button>
+                  <span class="test-msg" id="aiCliStat"></span>
+                </div>
+                <p class="hint" style="margin-top:6px;">Kimi CLI 免登录直连自有端点；CodeBuddy CLI 需一次性浏览器授权，令牌由 CLI 持久保存。</p>
+              </div>
+            </div>
+            <!-- Tab 2：Git 协同配置（原 Git 配置页，现作为设置中的一个卡；字段对齐 KS git_adapter 契约） -->
+            <div class="spane" data-spane="git">
+              <div class="sec-title">Git 仓库</div>
+              <div class="field"><label>远程仓库地址（Remote URL）</label><input class="inp" id="gitRemoteUrl" placeholder="https://github.com/you/repo.git"/></div>
+              <div class="field"><label>分支（Branch）</label><input class="inp" id="gitBranch" placeholder="main"/></div>
+              <div class="field"><label>Git 用户名</label><input class="inp" id="gitUserName" placeholder="（可选，commit 署名）"/></div>
+              <div class="field"><label>Git 邮箱</label><input class="inp" id="gitUserEmail" placeholder="（可选，commit 署名）"/></div>
+              <div class="hint" id="gitCfgHint">沉淀型用例（知识图谱、回测回流）经 Git 同步到团队仓库，实现用例资产长期沉淀与协同。</div>
+              <p class="hint" style="margin-top:8px;color:var(--text-2)">配置由知识系统（KS）按项目隔离存储并执行，本页与 KS「系统设置 → Git 协同配置」读写同一份数据；Git 元数据位于服务端 <code>git_repos/&lt;项目&gt;/.git</code>，工作树为 <code>brains/&lt;项目&gt;/</code>。</p>
+              <div style="margin-top:16px;display:flex;gap:10px">
+                <button class="btn btn-primary" id="gitSaveCfgBtn">保存配置</button>
+                <button class="btn" id="gitInitBtn">初始化仓库</button>
+              </div>
+              <div id="gitCfgMsg" class="test-msg" style="margin-top:12px"></div>
+            </div>
           </div>
-          <p class="hint" id="aiCliMsg">正在检测 CodeBuddy CLI 登录状态…</p>
-          <div class="test-row">
-            <button class="btn btn-primary btn-sm" id="aiCliLogin" style="display:none">登录</button>
-            <button class="btn btn-ghost btn-sm" id="aiCliRefresh">刷新状态</button>
-            <span class="test-msg" id="aiCliStat"></span>
-          </div>
-          <p class="hint" style="margin-top:6px;">默认使用 CodeBuddy CLI 作为 AI 通道；后续可扩展其它 CLI。登录为一次性浏览器授权，令牌由 CLI 持久保存，后续无需重复登录。</p>
         </div>
       </div>
       <div class="modal-foot"><span class="hint" id="setHint">修改即时生效，无需重启服务</span><button class="btn btn-primary" id="setSave">保存设置</button></div>
@@ -593,6 +772,17 @@ input[type=file]{display:none}
       <div class="modal-foot">
         <button class="btn" id="draftEditCancel">取消</button>
         <button class="btn btn-primary" id="draftEditSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 只读详情弹窗（草稿审阅 / 回测沉淀条目 / 回流草稿 通用查看） -->
+  <div class="modal" id="detailModal">
+    <div class="modal-card">
+      <div class="modal-head"><h3 id="detailTitle">详情</h3><button class="modal-close" title="关闭"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+      <div class="modal-body">
+        <div class="detail-meta" id="detailMeta"></div>
+        <div class="detail-content md" id="detailContent"></div>
       </div>
     </div>
   </div>

@@ -51,8 +51,8 @@ function check(name, pass, detail) {
       if (content && content.length >= 800) break;
       console.log(`  注: 第${attempt}次生成内容过短(len=${content ? content.length : 0})，重试...`);
     }
-    check('AI 平台调用成功(engine=ai-codebuddy)',
-      engine === 'ai-codebuddy', `engine=${engine}`);
+    check('AI 平台调用成功(真实 AI 通道，engine=ai-*)',
+      typeof engine === 'string' && engine.startsWith('ai-'), `engine=${engine}`);
     check('生成内容非空且有结构(含#与列表)',
       typeof content === 'string' && content.length > 800 && content.includes('#'),
       `len=${content ? content.length : 0}`);

@@ -1,9 +1,9 @@
 {
   "title": "TestGen 知识管理系统 · 使用教程",
-  "systemVersion": "1.0.0",
-  "minor": 2,
-  "version": "1.2",
-  "updatedAt": "2026-07-28",
+  "systemVersion": "2.0.0",
+  "minor": 6,
+  "version": "2.6",
+  "updatedAt": "2026-08-17",
   "chapters": [
     { "id": "overview", "title": "概览与快速开始", "cases": ["用默认项目跑通最小闭环"] },
     { "id": "projects", "title": "项目空间与多项目管理", "cases": ["为订单系统新建独立项目"] },
@@ -11,10 +11,12 @@
     { "id": "generator", "title": "生成中心：智能生成测试用例", "cases": ["为 auth 模块生成冒烟用例"] },
     { "id": "review", "title": "草稿审阅与编辑", "cases": ["修改用例触发质量规则沉淀"] },
     { "id": "commit", "title": "入库看板：知识沉淀与冲突处理", "cases": ["批量确认入库并解决冲突"] },
-    { "id": "backflow", "title": "执行回流：从失败到知识", "cases": ["上传失败报告生成缺陷草稿"] },
-    { "id": "retest", "title": "回测：测试报告存档与复盘", "cases": ["存档一轮回归报告"] },
+    { "id": "retest", "title": "回测 · 报告回流：沉淀、审核与重测计划", "cases": ["上传失败报告生成缺陷草稿", "生成一轮重测计划"] },
+    { "id": "search", "title": "知识检索：关键词与混合语义", "cases": ["检索知识库命中历史经验"] },
     { "id": "graph", "title": "知识图谱：可视化业务流依赖", "cases": ["定位业务步骤影响面"] },
+    { "id": "git", "title": "Git 协同：知识库版本管理", "cases": ["配置远端并提交一次变更"] },
     { "id": "settings", "title": "系统设置：KS 与 AI 平台对接", "cases": ["配置自有模型并验证连通"] },
+    { "id": "cases", "title": "业务流程使用案例", "cases": ["新项目从零到一建立知识闭环", "回归报告回流并规划重测", "缺陷复盘检索与影响面定位", "知识沉淀与团队 Git 共享"] },
     { "id": "version", "title": "版本说明与最佳实践", "cases": [] }
   ]
 }

@@ -25,15 +25,17 @@ const CASES = [
       try {
         const v2 = readWeb('app.v2.js');
         const ks = readKsFront();
-        const hasEditBtn = /draftCard[\s\S]{0,1500}?(编辑|edit|btn-edit|data-act="edit")/.test(v2)
-          || /loadReview[\s\S]{0,1500}?data-act="edit"/.test(v2);
-        const hasCheckbox = /type="checkbox"/.test(v2);
-        const hasBatchDelete = /批量删除|batchDelete|batch-delete|data-act="batch-delete"/.test(v2);
+        // 检测 loadReview 草稿审阅表的实际功能 UI（编辑/复选框/批量删除）
+        // v2 重构：loadReview 委托通用 renderDraftTable；编辑按钮仅在 opts.editable 时渲染（loadReview 传入 true）
+        const loadReviewEditable = /async function loadReview[\s\S]{0,600}?editable:\s*true/.test(v2);
+        const hasEditBtn = loadReviewEditable && /opts\.editable[\s\S]{0,150}?data-act="edit"/.test(v2);
+        const hasCheckbox = /renderDraftTable[\s\S]{0,2500}?type="checkbox"/.test(v2);
+        const hasBatchDelete = /renderDraftTable[\s\S]{0,2500}?data-act="batch-delete"|批量删除/.test(v2);
         const ksHasEdit = /function editDraft|editDraft\(/.test(ks);
         const ksHasCheckbox = /type="checkbox"/.test(ks);
         const ksHasBatchDelete = /batchDeleteDrafts|批量删除/.test(ks);
         const detail =
-          `业务前端: 编辑按钮=${hasEditBtn}, 复选框=${hasCheckbox}, 批量删除=${hasBatchDelete}；` +
+          `业务前端(loadReview): 编辑按钮=${hasEditBtn}, 复选框=${hasCheckbox}, 批量删除=${hasBatchDelete}；` +
           `KS: 编辑=${ksHasEdit}, 复选框=${ksHasCheckbox}, 批量删除=${ksHasBatchDelete}`;
         const missing = [];
         if (!hasEditBtn && ksHasEdit) missing.push('编辑');
@@ -43,11 +45,11 @@ const CASES = [
           return {
             status: 'fail',
             detail,
-            evidence: `草稿审阅页(loadReview/draftCard)仅为卡片式+「删除/入库」按钮，缺少 KS 草稿审核页已有的功能: ${missing.join('、')}。`
-              + `draftCard 关键片段见 web/app.v2.js（仅渲染 .del/.commit 两类按钮，无编辑/复选框）`
+            evidence: `草稿审阅页(loadReview)缺少 KS 草稿审核页已有的功能: ${missing.join('、')}。`
           };
         }
-        return { status: 'info', detail, evidence: '功能集一致' };
+        // 已修复：loadReview 已含 data-act="edit" 编辑按钮、行复选框与批量删除，功能集与 KS 对齐 → pass
+        return { status: 'pass', detail, evidence: 'loadReview 已含编辑/复选框/批量删除，与 KS 草稿审阅功能集一致' };
       } catch (e) {
         return { status: 'fail', detail: 'B1 执行异常: ' + e.message, evidence: String(e.stack || e) };
       }

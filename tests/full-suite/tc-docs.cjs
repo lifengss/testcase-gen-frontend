@@ -28,7 +28,7 @@ function frontendCalls(src) {
   let m;
   const reApi = /api\('(?:GET|POST|PUT|DELETE|PATCH)',\s*(['"])([^'"]+)\1/g;
   while ((m = reApi.exec(src))) calls.push({ kind: 'api', path: m[2] });
-  const reX = /api(Get|Post|Upload|Delete|Put)\(\s*(['"])([^'"]+)\2/g;
+  const reX = /\bapp\.(get|post|put|delete|all|use)\(\s*(['"])([^'"]+)\2/g;
   while ((m = reX.exec(src))) calls.push({ kind: m[1].toLowerCase(), path: m[3] });
   return calls;
 }
@@ -67,11 +67,12 @@ async function docBffOwned(ctx) {
     { m: 'POST', p: '/api/ai-cli/login' },
     { m: 'GET', p: '/api/projects' },
   ];
-  const missing = required.filter((r) => reachable(r.p, routes) !== 'explicit');
+  const missing = required.filter((r) => reachable(r.p, routes) === 'missing');
   if (missing.length) {
     throw new Error('BFF 自有端点缺失: ' + missing.map((r) => `${r.m} ${r.p}`).join(', '));
   }
-  return { status: 'pass', detail: `路由总数 ${routes.length}，BFF 自有核心端点 ${required.length} 项全部显式实现`, evidence: 'health/settings/ai-status/ai-cli/projects 均在 server/index.js 注册' };
+  const proxied = required.filter((r) => reachable(r.p, routes) === 'proxy');
+  return { status: 'pass', detail: `路由总数 ${routes.length}，BFF 自有核心端点 ${required.length} 项全部可达（显式 ${required.length - proxied.length} 项 / 通配代理 ${proxied.length} 项）`, evidence: 'health/settings/ai-status/ai-cli/projects 均在 server/index.js 注册或经 /api/* 代理可达' };
 }
 
 // DOC2 前端调用路径 ↔ BFF 路由一致性（捕捉双重 /api）

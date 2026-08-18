@@ -32,7 +32,7 @@ const CASES = [
     async run(ctx) {
       try {
         const r = await httpReq(ctx.bff, 'POST', '/api/generate', {
-          timeout: 180000,
+          timeout: 300000, // 真实 AI（openai 直连）长内容推理可达 3-4 分钟，180s 会误杀
           body: { op: 'gen_cases', scope: { depth: 1, modules: [] }, constraints: { framework: '', note: '' } }
         });
         const d = (r.json && r.json.data && r.json.data.data) || (r.json && r.json.data) || {};

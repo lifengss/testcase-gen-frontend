@@ -1,6 +1,6 @@
 {
   "name": "testcase-gen-frontend",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "AI 测试用例自动生成 · 前端业务系统（BFF 编排层 + Web UI）",
   "scripts": {

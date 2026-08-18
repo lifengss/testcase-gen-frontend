@@ -99,6 +99,33 @@ app.get('/api/brain/pages', proxy('GET', '/api/brain/pages'));
 app.get('/api/brain/pages/:category/:id', proxy('GET', '/api/brain/pages/:category/:id'));
 app.post('/api/search', proxy('POST', '/api/search'));
 
+// 回测分流（对齐 KS V2.0 S4）：POST /api/retest/plan 加权重测计划
+// 垂直构建兜底：KS 不可达或 RETEST_MOCK=1 时返回契约一致假数据；KS 就绪后自动切真端点。
+const RETEST_MOCK = process.env.RETEST_MOCK === '1';
+function retestMockData(req) {
+  const project = (req.body && req.body.project) || (req.query && req.query.project) || DEFAULT_PROJECT;
+  const scope = (req.body && req.body.scope) || 'all';
+  const weights = Object.assign({ recentFail: 0.6, severity: 0.4 }, (req.body && req.body.weights) || {});
+  const items = [
+    { id: 'de-mock-login-1', title: 'Mock 登录鉴权失败用例', category: 'defect-experience', repo: 'brain', caseId: 'test_login_auth', status: 'fail', severity: 'high', group: '登录', priority: 0.92, recentFailScore: 1, severityScore: 0.8, uploadedAt: new Date().toISOString(), raw: '', preview: 'Mock：登录接口在并发场景下偶发 500（垂直构建假数据，契约与真端点一致）。' },
+    { id: 'de-mock-pay-1', title: 'Mock 支付金额精度用例', category: 'defect-experience', repo: 'brain', caseId: 'test_pay_amount', status: 'error', severity: 'critical', group: '支付', priority: 0.86, recentFailScore: 0.6, severityScore: 1, uploadedAt: new Date().toISOString(), raw: '', preview: 'Mock：支付金额计算出现精度丢失（垂直构建假数据）。' },
+  ];
+  return { success: true, data: { items, total: items.length, scope, weights, generatedAt: new Date().toISOString(), _mock: true } };
+}
+app.post('/api/retest/plan', async (req, res) => {
+  const tryReal = !RETEST_MOCK;
+  if (tryReal) {
+    try {
+      const { status, data } = await ksCall('POST', '/api/retest/plan', { body: req.body || {} });
+      return res.status(status).json(data);
+    } catch (e) {
+      logger.app('warn', '/api/retest/plan KS 不可达，回退 Mock :: ' + e.message);
+      // 落入下方 Mock 兜底
+    }
+  }
+  res.status(200).json(retestMockData(req));
+});
+
 // Git 协同（对齐 KS §12 · S1）：config/status/init/commit
 // 垂直构建兜底：KS 不可达或 GIT_MOCK=1 时返回契约一致假数据，使前端 UI 链路先可测；
 // KS 就绪后自动切真端点（仅回退，不重写 UI）。
@@ -340,6 +367,30 @@ function templateGenerate(op, scope, ctx, project) {
   return head + items + '\n';
 }
 
+// 清理 LLM 偶发泄漏的推理链标签（<think>...</think> 或 <thinking>...</thinking>）。
+// 部分模型（尤其自定义端点 / 推理模型）会在正文前吐出思维链，需剥掉以免污染生成结果、
+// 质量门控与入库内容。处理三种情况：成对闭合、跨行、以及只开不闭（截断残留）。
+function sanitizeAI(text) {
+  if (!text || typeof text !== 'string') return text;
+  // 成对闭合（含跨行），支持 think / thinking 写法
+  let out = text.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '');
+  // 兜底：残留未闭合的开标签（从 <think 起直到文末或下一个显式块边界）
+  out = out.replace(/<think(?:ing)?>[\s\S]*$/gi, '');
+  // 仅剩孤立闭合标签也清掉，避免残留 </think>
+  out = out.replace(/<\/think(?:ing)?>/gi, '');
+  return out.trim() ? out : text; // 若清理后全空，保留原文（避免误删致空结果）
+}
+
+// OpenAI 兼容 endpoint 归一化：支持 base / 含 /v1 / 完整 /chat/completions 三种写法，
+// 统一归一化到 /chat/completions（生成与连通性探测共用，避免对 base 地址 POST 得到 404）
+function normalizeAiEndpoint(endpoint) {
+  let e = String(endpoint || '').trim().replace(/\/+$/, '');
+  if (e && !e.endsWith('/chat/completions')) {
+    e = e.endsWith('/v1') ? e + '/chat/completions' : e + '/v1/chat/completions';
+  }
+  return e;
+}
+
 // OpenAI 兼容通道：豆包/火山方舟、腾讯 TokenHub、codebuddy2api 等 REST 端点
 async function callOpenAI(op, query, constraints) {
   const c = cfg.get();
@@ -356,7 +407,8 @@ async function callOpenAI(op, query, constraints) {
     sysLines.push('序号必须连续递增，严禁合并多条用例到同一标记下。');
   }
   const system = sysLines.join('\n');
-  const resp = await fetch(c.ai.endpoint, {
+  const aiEndpoint = normalizeAiEndpoint(c.ai.endpoint);
+  const resp = await fetch(aiEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + c.ai.apiKey },
     body: JSON.stringify({
@@ -368,8 +420,10 @@ async function callOpenAI(op, query, constraints) {
   return j.choices?.[0]?.message?.content || null;
 }
 
-// CodeBuddy 通道：调用全局 codebuddy CLI（见 codebuddy-client.js，跨平台、绕开 SDK 的 Windows 传输缺陷）
+// CodeBuddy / Kimi 通道：调用全局 CLI（见 codebuddy-client.js / kimi-client.js，
+// 跨平台、绕开 SDK 的 Windows 传输缺陷；kimi 免登录直连自有 OpenAI 兼容端点）
 const { callCodeBuddy } = require('./codebuddy-client');
+const { callKimi, resolveCliScript: resolveKimiCliScript, staleLockFiles: kimiCleanLocks } = require('./kimi-client');
 
 async function callAIProvider(op, query, constraints) {
   const c = cfg.get();
@@ -377,41 +431,48 @@ async function callAIProvider(op, query, constraints) {
     provider: c.ai.provider, model: c.ai.model,
     useCustomModel: !!c.ai.useCustomModel, op,
   });
+  const sysLines = [
+    '你是测试用例生成专家，服务于知识管理系统的自动化测试用例生成流程。',
+    '请严格按以下 Markdown 结构输出，确保能被知识库质量门控收录：',
+    '1) 使用 # 或 ## 作为章节标题；',
+    '2) 使用 - 无序列表组织步骤与要点；',
+    '3) 用 ``` 代码块包裹示例代码并标注语言（如 python）；',
+    '4) 直接输出测试用例内容，不要任何额外解释或寒暄。',
+    '5) 严禁输出任何推理链 / 思维链标签（如 <think>...</think> 或 <thinking>）；只返回最终 Markdown 正文。',
+  ];
+  if (op === 'gen_cases') {
+    sysLines.push('');
+    sysLines.push('【关键格式约束】生成测试用例条目时，每条用例必须以固定标记开头：');
+    sysLines.push('## TC-{三位序号} · {用例标题}');
+    sysLines.push('例如：## TC-001 · 用户登录成功');
+    sysLines.push('序号必须连续递增，严禁合并多条用例到同一标记下。');
+  }
+  const sys = sysLines.join('\n');
+  // 模型：内置模型直接按 id 使用；自定义模型（useCustomModel 且配了 endpoint）走 CLI 直连自有端点。
+  const m = (c.ai.model && c.ai.model !== 'gpt-4o-mini') ? c.ai.model : 'claude-sonnet-4';
+  const useCustom = !!c.ai.useCustomModel && !!(c.ai.endpoint && c.ai.model);
   if (c.ai.provider === 'codebuddy') {
-    const sysLines = [
-      '你是测试用例生成专家，服务于知识管理系统的自动化测试用例生成流程。',
-      '请严格按以下 Markdown 结构输出，确保能被知识库质量门控收录：',
-      '1) 使用 # 或 ## 作为章节标题；',
-      '2) 使用 - 无序列表组织步骤与要点；',
-      '3) 用 ``` 代码块包裹示例代码并标注语言（如 python）；',
-      '4) 直接输出测试用例内容，不要任何额外解释或寒暄。',
-    ];
-    if (op === 'gen_cases') {
-      sysLines.push('');
-      sysLines.push('【关键格式约束】生成测试用例条目时，每条用例必须以固定标记开头：');
-      sysLines.push('## TC-{三位序号} · {用例标题}');
-      sysLines.push('例如：## TC-001 · 用户登录成功');
-      sysLines.push('序号必须连续递增，严禁合并多条用例到同一标记下。');
-    }
-    const sys = sysLines.join('\n');
-    // 模型：内置模型直接按 id 使用；自定义模型（useCustomModel 且配了 endpoint）走 .codebuddy/models.json 解析自有 endpoint。
-    const m = (c.ai.model && c.ai.model !== 'gpt-4o-mini') ? c.ai.model : 'claude-sonnet-4';
-    const useCustom = !!c.ai.useCustomModel && !!(c.ai.endpoint && c.ai.model);
     const r = await callCodeBuddy(sys + '\n\n' + query, {
       model: m,
       loadSettings: useCustom,
       maxTurns: c.ai.maxTurns,
     });
     logger.app('info', 'ai result', { provider: 'codebuddy', model: m, empty: !r });
-    return r;
+    return sanitizeAI(r);
   }
-  if (c.ai.provider === 'openai') return callOpenAI(op, query, constraints);
+  if (c.ai.provider === 'kimi') {
+    // kimi 免登录直连自有 OpenAI 兼容端点（data/kimi-home/config.toml 由 config.json 生成）
+    const r = await callKimi(sys + '\n\n' + query, { model: m, config: c });
+    logger.app('info', 'ai result', { provider: 'kimi', model: m, empty: !r });
+    return sanitizeAI(r);
+  }
+  if (c.ai.provider === 'openai') return sanitizeAI(await callOpenAI(op, query, constraints));
   return null; // none 或未识别：跳过真实 AI
 }
 
 app.post('/api/generate', async (req, res) => {
   try {
-    const { op, project = 'testCaseGenerator', sourceRefs = {}, scope = {}, constraints = {} } = req.body || {};
+    const { op, project = DEFAULT_PROJECT, sourceRefs = {}, scope = {}, constraints = {} } = req.body || {};
     if (!['gen_outline', 'gen_cases', 'gen_scripts'].includes(op)) {
       return res.status(400).json({ success: false, error: 'op 必须为 gen_outline/gen_cases/gen_scripts' });
     }
@@ -590,7 +651,8 @@ async function testCodeBuddy(ai) {
     const v = execSync('codebuddy --version', { timeout: 6000, windowsHide: true, encoding: 'utf8' });
     cliVer = String(v).trim().split('\n')[0].slice(0, 24);
   } catch (_) { cliVer = null; }
-  const ep = (ai && ai.useCustomModel && ai.endpoint && ai.endpoint.trim()) ? ai.endpoint.trim() : '';
+  const epRaw = (ai && ai.useCustomModel && ai.endpoint && ai.endpoint.trim()) ? ai.endpoint.trim() : '';
+  const ep = epRaw ? normalizeAiEndpoint(epRaw) : '';
   if (!ep) {
     // 内置模型：CLI 可达即视为可用
     if (cliVer) return { provider: 'codebuddy', configured: true, reachable: true, label: 'CodeBuddy CLI 可达', detail: 'codebuddy ' + cliVer };
@@ -626,7 +688,7 @@ async function testOpenAI(ai) {
   if (!endpoint) return { provider: 'openai', configured: false, reachable: false, label: '未配置 Endpoint', detail: 'AI 平台未配置 API Endpoint' };
   const t0 = Date.now();
   try {
-    const resp = await fetch(endpoint, {
+    const resp = await fetch(normalizeAiEndpoint(endpoint), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
       body: JSON.stringify({ model: model || 'gpt-4o-mini', messages: [{ role: 'system', content: 'ping' }, { role: 'user', content: 'hi' }], max_tokens: 5 }),
@@ -643,25 +705,49 @@ async function testOpenAI(ai) {
     return { provider: 'openai', configured: true, reachable: false, label: 'OpenAI 不可达', detail: String(e.message || e).slice(0, 160), latencyMs: Date.now() - t0 };
   }
 }
+// Kimi 通道连通性：以一次极小 kimi 调用（config.toml 注入自有端点）实测真实可用
+async function testKimi(aiCfg) {
+  const cliInstalled = await _resolveAndCheckInstalled(AI_CLI_PROVIDERS.kimi);
+  if (!cliInstalled.installed) {
+    return { provider: 'kimi', configured: true, reachable: false, label: 'Kimi CLI 未安装', detail: '请执行：npm i -g @moonshot-ai/kimi-code' };
+  }
+  const t0 = Date.now();
+  try {
+    const r = await callKimi('Reply with the single word: ok', {
+      model: aiCfg.model, config: { ai: aiCfg }, timeout: 15000,
+    });
+    const ok = !!r && /ok/i.test(r);
+    return { provider: 'kimi', configured: true, reachable: ok,
+      label: ok ? 'Kimi CLI 直连端点可达' : 'Kimi 响应异常',
+      detail: ok ? 'kimi ' + '连通成功' + ` · ${Date.now() - t0}ms` : (r ? '端点返回了内容但不符合预期' : '端点无响应'), latencyMs: Date.now() - t0 };
+  } catch (e) {
+    return { provider: 'kimi', configured: true, reachable: false, label: 'Kimi 端点不可达',
+      detail: String((e && e.message) || e).slice(0, 160), latencyMs: Date.now() - t0 };
+  }
+}
 // 统一 AI 平台连通性判定（状态栏与测试连接共用，单一数据源）
 async function checkAiStatus(aiCfg) {
   const provider = (aiCfg && aiCfg.provider) || 'none';
   if (provider === 'none') return { provider: 'none', configured: false, reachable: false, label: '未启用 AI 平台' };
   if (provider === 'codebuddy') return await testCodeBuddy(aiCfg);
+  if (provider === 'kimi') return await testKimi(aiCfg);
   if (provider === 'openai') return await testOpenAI(aiCfg);
   return { provider, configured: true, reachable: false, label: provider, detail: '未知供应商' };
 }
 
 // ---------------------------------------------------------------------------
-// AI CLI 登录态管理（默认 CodeBuddy CLI，预留多 provider 扩展）
-// 设计：后端只负责"检测登录态"与"触发登录"（派生 CLI 打开浏览器 OAuth）。
-//       凭证由 CodeBuddy CLI 自身持久化在用户配置目录，天然一次登录、后续免登。
+// AI CLI 登录态管理（CodeBuddy CLI + Kimi CLI）
+// 设计：后端只负责"检测登录态"与"触发登录"。
+//  - CodeBuddy：凭证由 CLI 自身持久化在用户配置目录，天然一次登录、后续免登；
+//    登录须派生 CLI 交互窗口（2.x 无 login 子命令，/login 走浏览器 OAuth）。
+//  - Kimi：免登录——只要 data/kimi-home/config.toml 声明了自定义 OpenAI 兼容
+//    provider（base_url 指向自有/内网端点）即可直连，无需任何账号登录态。
 // ---------------------------------------------------------------------------
 const AI_CLI_PROVIDERS = {
   codebuddy: {
     id: 'codebuddy',
     name: 'CodeBuddy CLI',
-    default: true,
+    default: false,
     // 解析入口脚本（镜像 codebuddy-client.js 的 resolveCliScript）
     resolve: () => {
       if (process.env.CODEBUDDY_CODE_PATH) return process.env.CODEBUDDY_CODE_PATH;
@@ -675,6 +761,16 @@ const AI_CLI_PROVIDERS = {
         if (w) return w;
       } catch (_) {}
       return 'codebuddy'; // PATH 兜底
+    },
+  },
+  kimi: {
+    id: 'kimi',
+    name: 'Kimi CLI',
+    default: true,
+    noLogin: true, // 免登录：config.toml 声明自定义 OpenAI 兼容端点即可直连
+    // 解析入口脚本（镜像 kimi-client.js 的 resolveCliScript）
+    resolve: () => {
+      try { return resolveKimiCliScript(); } catch (_) { return 'kimi'; }
     },
   },
 };
@@ -748,20 +844,29 @@ function _runCli(script, args, timeoutMs) {
 // 解析 CLI 脚本路径并判定是否"已安装"
 async function _resolveAndCheckInstalled(prov) {
   const script = prov.resolve();
-  if (script && script !== 'codebuddy') {
+  if (script && !/^(codebuddy|kimi)$/.test(script)) {
     return { script, installed: fs.existsSync(script) };
   }
   // PATH 兜底：用 --version 实测
-  const v = await _runCli('codebuddy', ['--version'], 8000);
-  return { script: 'codebuddy', installed: v.code === 0 && !/not recognized|not found|unknown command/i.test(v.out) };
+  const bin = prov.id || script;
+  const v = await _runCli(bin, ['--version'], 8000);
+  return { script: bin, installed: v.code === 0 && !/not recognized|not found|unknown command/i.test(v.out) };
 }
 
-// 检测某 provider 的 CLI 登录态（三态：not_installed / not_logged_in / logged_in）
+// 检测某 provider 的 CLI 状态（kimi 免登录 / codebuddy 需登录；三态：not_installed / not_logged_in / logged_in）
 async function checkAiCliStatus(provider) {
-  const prov = AI_CLI_PROVIDERS[provider] || AI_CLI_PROVIDERS.codebuddy;
+  const prov = AI_CLI_PROVIDERS[provider] || AI_CLI_PROVIDERS.kimi;
   const { script, installed } = await _resolveAndCheckInstalled(prov);
   if (!installed) {
-    return { provider: prov.id, name: prov.name, installed: false, loggedIn: false, status: 'not_installed', message: '未检测到 CodeBuddy CLI，请先执行：npm i -g @tencent-ai/codebuddy-code' };
+    const hint = prov.id === 'kimi'
+      ? '未检测到 Kimi CLI，请先执行：npm i -g @moonshot-ai/kimi-code'
+      : '未检测到 CodeBuddy CLI，请先执行：npm i -g @tencent-ai/codebuddy-code';
+    return { provider: prov.id, name: prov.name, installed: false, loggedIn: false, status: 'not_installed', message: hint };
+  }
+  if (prov.noLogin) {
+    // kimi 免登录：已装 CLI + config.toml 指向自有端点即视为可用
+    return { provider: prov.id, name: prov.name, installed: true, loggedIn: true, status: 'logged_in',
+      message: 'Kimi CLI 免登录直连自有端点，能力可用（config.toml 已注入）' };
   }
   // 优先用官方 `auth status` 判定登录态
   const r = await _runCli(script, ['auth', 'status'], 20000);
@@ -782,8 +887,12 @@ async function checkAiCliStatus(provider) {
 // （会打开浏览器 OAuth）。因此这里派生一个「可见且持久」的交互式 CLI 窗口，由用户在窗口内输入
 // /login 完成授权（一次性，令牌持久化在用户配置目录）。不再使用无头的 `codebuddy login`（已失效）。
 function startAiCliLogin(provider) {
-  const prov = AI_CLI_PROVIDERS[provider] || AI_CLI_PROVIDERS.codebuddy;
+  const prov = AI_CLI_PROVIDERS[provider] || AI_CLI_PROVIDERS.kimi;
   return (async () => {
+    if (prov.noLogin) {
+      // kimi 免登录：无需授权，提示配置自有端点即可
+      return { success: true, message: 'Kimi CLI 免登录直连自有端点（data/kimi-home/config.toml），无需授权' };
+    }
     const { script, installed } = await _resolveAndCheckInstalled(prov);
     if (!installed) return { success: false, error: '未检测到 CodeBuddy CLI，请先安装：npm i -g @tencent-ai/codebuddy-code' };
     try {
@@ -806,15 +915,15 @@ function startAiCliLogin(provider) {
 // 端点：AI CLI 登录态
 app.get('/api/ai-cli/status', async (req, res) => {
   try {
-    const s = await checkAiCliStatus((req.query && req.query.provider) || 'codebuddy');
+    const s = await checkAiCliStatus((req.query && req.query.provider) || 'kimi');
     res.json({ success: true, data: s });
   } catch (e) {
     res.json({ success: false, error: String((e && e.message) || e) });
   }
 });
-// 端点：触发 AI CLI 登录（一次登录，后续免登）
+// 端点：触发 AI CLI 登录（kimi 免登录返回提示；codebuddy 走浏览器 OAuth）
 app.post('/api/ai-cli/login', async (req, res) => {
-  const r = await startAiCliLogin((req.body && req.body.provider) || 'codebuddy');
+  const r = await startAiCliLogin((req.body && req.body.provider) || 'kimi');
   res.json(r.success ? r : Object.assign({ success: false }, r));
 });
 
@@ -901,5 +1010,9 @@ process.on('unhandledRejection', (r) =>
   logger.error(r instanceof Error ? r : new Error(String(r)), { phase: 'unhandledRejection' }));
 
 app.listen(PORT, () => {
+  // 启动时清理 kimi CLI 残留锁（BFF 重启即兜底清一次），并输出清理数量便于确认
+  let kimiLocksCleaned = 0;
+  try { kimiLocksCleaned = kimiCleanLocks(); } catch (_) {}
   console.log(`[TestGen BFF] 监听 http://localhost:${PORT}  ·  知识系统 ${cfg.get().ks.apiBase}`);
+  logger.app('info', 'bff started', { port: PORT, kimiLocksCleaned });
 });

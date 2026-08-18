@@ -30,6 +30,45 @@ verify-out.txt
 # ===== 本地 Agent 数据 =====
 .codebuddy/
 
+# ===== 临时调试 / 探针脚本与产物（本地排查用，非源码） =====
+cache/
+*_out.txt
+*_check.txt
+debug-*.cjs
+debug-out*.txt
+probe_gen.txt
+e2e-m2-retest-plan-check.cjs
+e2e-m3-search-check.cjs
+e2e-m4-ai-lite-check.cjs
+e2e-m4-ai-model-check.cjs
+e2e-ui-full-test.cjs
+e2e-ui-seed-data.cjs
+probe-*.cjs
+probe-*.txt
+diag-*.cjs
+kimi-repro*.cjs
+kimi-diag.cjs
+ab-*.cjs
+ab-help.ps1
+check-*.ps1
+check-*.cjs
+restart-and-verify-*.ps1
+shot-tutorial.ps1
+repro-prompt.txt
+tutorial-screenshots.cjs
+tmp-test-screenshot.png
+ai-status-probe.json
+ai_status.txt
+api_check.txt
+bff_check.txt
+bflow_out.txt
+conflicts_check.txt
+full_out.txt
+iso_out.txt
+proj_check.txt
+wiki_check.txt
+kimi-deep-dive.json
+
 # Python test cache
 tests/__pycache__/
 # Test reports (generated)

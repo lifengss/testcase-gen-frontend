@@ -231,8 +231,8 @@ $$('.nav-item').forEach(n => n.onclick = () => {
   if (view) { const tgt = $('#view-' + view); if (tgt) tgt.classList.add('active'); }
   if (view === 'graph') loadGraph();
   if (view === 'retest') loadRetest();
-  if (view === 'git-config') loadGitConfig();
-  if (view === 'git-status') loadGitStatus();
+  if (view === 'search') initKbSearch();
+  if (view === 'git') showGit();
   if (view === 'tutorial') loadTutorial();
 });
 $('#psBtn').onclick = e => { e.stopPropagation(); $('#psMenu').classList.toggle('open'); };
@@ -574,7 +574,8 @@ $('#genBtn').onclick = async () => {
   $('#streamBody').innerHTML = `<div class="md">${renderMarkdown(d.content || '')}</div>`;
   $('#dlBtns').style.display = 'inline-flex';
   renderHits(d.hits || []);
-  toast('生成完成（' + d.engine + '）', 'ok');
+  const isFallback = /template/.test(d.engine || '');
+  toast(isFallback ? '生成完成 · 已使用本地模板兜底（未调用 AI）' : '生成完成（' + d.engine + '）', isFallback ? 'warn' : 'ok');
   loadReview(); loadCommit();
 };
 
@@ -583,7 +584,13 @@ $('#codeFile').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   const form = new FormData(); form.append('file', f); form.append('type', 'code'); form.append('project', pickProject());
   const { ok, data } = await api('POST', '/api/source-upload', { form });
-  if (ok) { toast('代码已上传并解析：' + ((data.data && data.data.summary) || ''), 'ok'); loadContext(); loadScopes(); }
+  if (ok) {
+    // #7 反馈：zip 源码解析后落点为「项目 Wiki 的 API 调用依赖图谱」，
+    // 用户常不知文件去哪；明确告知去向并自动跳到知识检索/图谱查看。
+    toast('代码已解析为「API 调用依赖」（项目 Wiki）：可在【知识检索 / 知识图谱】查看', 'ok');
+    loadContext(); loadScopes();
+    setTimeout(() => switchView('wiki'), 600);
+  }
   else toast('上传失败：' + (data.error || ''), 'err');
 };
 $('#prdFile').onchange = async e => {
@@ -602,6 +609,8 @@ $('#reqFile').onchange = async e => {
 };
 
 // ---- 草稿审阅 / 入库看板 ----
+// 统一口径：草稿箱仅展示"待处理"草稿，已完结（merged/discarded/rejected）不再悬挂
+function isPendingDraft(d) { return d && d.status !== 'merged' && d.status !== 'discarded' && d.status !== 'rejected'; }
 function srcLabel(s) { return s === 'exec_backflow' ? '执行回流' : s === 'human_edit' ? '人工编辑' : (s || '草稿'); }
 function draftCard(d, withBatch) {
   const el = document.createElement('div'); el.className = 'draft src-' + (d.source || 'other');
@@ -626,19 +635,51 @@ function draftCard(d, withBatch) {
   el.querySelector('[data-act=del]').onclick = () => delDraft(d.id);
   return el;
 }
+// ---- 草稿列表分页/排序状态（草稿审阅 与 回流草稿 各自独立）----
+const reviewState = { page: 1, size: 20, sortBy: 'createdAt', order: 'desc' };
+const backflowState = { page: 1, size: 20, sortBy: 'createdAt', order: 'desc' };
+const SORT_OPTS_DRAFT = [
+  { v: 'createdAt', l: '创建时间' }, { v: 'updatedAt', l: '更新时间' },
+  { v: 'title', l: '标题' }, { v: 'type', l: '类型' },
+  { v: 'source', l: '来源' }, { v: 'status', l: '状态' }, { v: 'qualityScore', l: '质量分' }
+];
 async function loadReview() {
-  // 草稿审阅：仅展示人工编辑草稿（source=human_edit），采用与知识管理系统一致的表格 + 复选框 + 编辑/删除/入库
-  const r = await api('GET', '/api/drafts', { query: { source: 'human_edit', limit: 200 } });
-  const list = asArray(r.data);
-  const box = $('#reviewList'); if (!box) return; box.innerHTML = '';
-  if (!list.length) { box.innerHTML = '<div class="card"><div class="d">暂无人工编辑草稿</div></div>'; return; }
+  await renderDraftTable($('#reviewList'), { source: 'human_edit', state: reviewState, editable: true, refresh: () => loadReview() });
+}
+async function loadBackflow() {
+  await renderDraftTable($('#backflowList'), { source: 'exec_backflow', state: backflowState, editable: false, refresh: () => loadBackflow() });
+}
+// 通用草稿表格：多选/批量入库/批量删除/查看/编辑(仅人工编辑)/分页/排序
+async function renderDraftTable(box, opts) {
+  if (!box) return;
+  const st = opts.state;
+  const r = await api('GET', '/api/drafts', {
+    query: { source: opts.source, sortBy: st.sortBy, order: st.order, includeTotal: 'true', excludeFinal: 'true', limit: st.size, offset: (st.page - 1) * st.size }
+  });
+  const body = r.data || {};
+  const list = asArray(body).filter(isPendingDraft);
+  const total = Number(body.total != null ? body.total : list.length);
+  const pages = Math.max(1, Math.ceil(total / st.size));
+  if (st.page > pages) st.page = pages;
+  box.innerHTML = '';
+  if (!list.length) { box.innerHTML = '<div class="card"><div class="d">暂无待处理草稿</div></div>'; return; }
   const wrap = document.createElement('div'); wrap.className = 'dt-wrap';
+  const selOpts = SORT_OPTS_DRAFT.map(o => `<option value="${o.v}"${o.v === st.sortBy ? ' selected' : ''}>${o.l}</option>`).join('');
+  const sizeOpts = [10, 20, 50, 100].map(n => `<option${n === st.size ? ' selected' : ''}>${n}</option>`).join('');
   wrap.innerHTML = `
     <div class="toolbar">
       <label class="selall"><input type="checkbox" id="selAll"/> 全选</label>
       <button class="btn btn-sm btn-soft" data-act="batch-commit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> 批量入库</button>
       <button class="btn btn-sm btn-ghost-danger" data-act="batch-delete">批量删除</button>
       <span class="cnt" id="selCnt"></span>
+      <span class="flex-sp"></span>
+      <label class="sort-wrap">排序 <select id="sortSel">${selOpts}</select><button class="btn btn-sm btn-ghost" id="sortDir">${st.order === 'desc' ? '↓ 新→旧' : '↑ 旧→新'}</button></label>
+      <label class="sort-wrap">每页 <select id="sizeSel">${sizeOpts}</select></label>
+      <span class="pager">
+        <button class="btn btn-sm" id="pagePrev" ${st.page <= 1 ? 'disabled' : ''}>‹ 上一页</button>
+        <span class="page-info">第 ${st.page}/${pages} 页 · 共 ${total} 条</span>
+        <button class="btn btn-sm" id="pageNext" ${st.page >= pages ? 'disabled' : ''}>下一页 ›</button>
+      </span>
     </div>
     <table class="dt">
       <thead><tr><th></th><th>标题</th><th>类型</th><th>来源</th><th>状态</th><th>更新时间</th><th class="ops">操作</th></tr></thead>
@@ -652,14 +693,17 @@ async function loadReview() {
       <td><input type="checkbox" class="row-sel" value="${d.id}"/></td>
       <td>${escapeHtml(d.title || '(无标题)')}</td>
       <td>${escapeHtml(d.type || '')}</td>
-      <td>${escapeHtml(d.source || '')}</td>
+      <td>${escapeHtml(srcLabel(d.source))}</td>
       <td>${escapeHtml(d.status || '')}</td>
-      <td>${escapeHtml(String(d.updated_at || d.created_at || '').slice(0, 19).replace('T', ' '))}</td>
+      <td>${escapeHtml(String(d.updatedAt || d.createdAt || d.updated_at || d.created_at || '').slice(0, 19).replace('T', ' '))}</td>
       <td class="ops">
         <div class="row-ops">
-          <button class="act-btn edit" data-act="edit" data-id="${d.id}" data-tip="编辑" aria-label="编辑">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          <button class="act-btn view" data-act="view" data-id="${d.id}" data-tip="查看" aria-label="查看">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
+          ${opts.editable ? `<button class="act-btn edit" data-act="edit" data-id="${d.id}" data-tip="编辑" aria-label="编辑">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </button>` : ''}
           <button class="act-btn commit" data-act="commit" data-id="${d.id}" data-tip="入库" aria-label="入库">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           </button>
@@ -675,14 +719,65 @@ async function loadReview() {
   const syncCnt = () => { const n = wrap.querySelectorAll('.row-sel:checked').length; const c = wrap.querySelector('#selCnt'); if (c) c.textContent = n ? ('已选 ' + n + ' 项') : ''; };
   selAll.onchange = e => { rows.forEach(c => c.checked = e.target.checked); syncCnt(); };
   rows.forEach(c => c.onchange = syncCnt);
-  wrap.querySelector('[data-act="batch-delete"]').onclick = () => batchDeleteDrafts(wrap);
-  wrap.querySelector('[data-act="batch-commit"]').onclick = () => batchCommitDrafts(wrap);
+  wrap.querySelector('[data-act="batch-delete"]').onclick = () => batchDeleteDrafts(wrap, opts.refresh);
+  wrap.querySelector('[data-act="batch-commit"]').onclick = () => batchCommitDrafts(wrap, opts.refresh);
+  wrap.querySelector('#sortSel').onchange = e => { st.sortBy = e.target.value; st.page = 1; opts.refresh(); };
+  wrap.querySelector('#sortDir').onclick = () => { st.order = st.order === 'desc' ? 'asc' : 'desc'; st.page = 1; opts.refresh(); };
+  wrap.querySelector('#sizeSel').onchange = e => { st.size = Number(e.target.value); st.page = 1; opts.refresh(); };
+  wrap.querySelector('#pagePrev').onclick = () => { if (st.page > 1) { st.page--; opts.refresh(); } };
+  wrap.querySelector('#pageNext').onclick = () => { if (st.page < pages) { st.page++; opts.refresh(); } };
+  wrap.querySelectorAll('[data-act="view"]').forEach(b => b.onclick = () => openDraftDetail(b.dataset.id));
   wrap.querySelectorAll('[data-act="edit"]').forEach(b => b.onclick = () => openDraftEdit(b.dataset.id));
   wrap.querySelectorAll('[data-act="commit"]').forEach(b => b.onclick = () => commitOne(b.dataset.id));
   wrap.querySelectorAll('[data-act="del"]').forEach(b => b.onclick = () => delDraft(b.dataset.id));
 }
+// ---- 只读详情弹窗（草稿 / Brain 页面通用查看）----
+function openDetailModal({ title, meta = [], content = '' }) {
+  const modal = $('#detailModal'); if (!modal) return;
+  $('#detailTitle').textContent = title || '详情';
+  $('#detailMeta').innerHTML = meta.map(m => `<span class="tag">${escapeHtml(m)}</span>`).join('');
+  $('#detailContent').innerHTML = renderMarkdown(content || '');
+  modal.classList.add('open');
+}
+function bindDetailModal() {
+  const modal = $('#detailModal'); if (!modal) return;
+  const close = () => modal.classList.remove('open');
+  const x = modal.querySelector('.modal-close'); if (x) x.onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+}
+async function openDraftDetail(id) {
+  try {
+    const r = await api('GET', '/api/drafts/' + id);
+    const d = (r.data && r.data.data) ? r.data.data : (r.data || {});
+    const obj = Array.isArray(d) ? d[0] : d;
+    openDetailModal({
+      title: obj.title || '(无标题)',
+      meta: [
+        '类型：' + (obj.type || '-'),
+        '来源：' + srcLabel(obj.source),
+        '状态：' + (obj.status || '-'),
+        ...(obj.qualityScore != null ? ['质量分：' + obj.qualityScore] : []),
+        '创建：' + String(obj.createdAt || obj.created_at || '').slice(0, 19).replace('T', ' '),
+        '更新：' + String(obj.updatedAt || obj.updated_at || '').slice(0, 19).replace('T', ' ')
+      ],
+      content: obj.content || ''
+    });
+  } catch (e) { toast('读取草稿详情失败: ' + e.message, 'err'); }
+}
+async function openPageDetail(category, id) {
+  try {
+    const r = await api('GET', `/api/brain/pages/${category}/${id}`);
+    const d = (r.data && r.data.data) ? r.data.data : {};
+    openDetailModal({
+      title: d.title || id,
+      meta: ['分类：' + category, '仓库：' + (d.repo || '-'), '来源：' + (d.source || '-')],
+      content: d.body || d.content || ''
+    });
+  } catch (e) { toast('读取条目详情失败: ' + e.message, 'err'); }
+}
 // 批量删除选中的草稿
-async function batchDeleteDrafts(wrap) {
+async function batchDeleteDrafts(wrap, refresh) {
   const ids = [...wrap.querySelectorAll('.row-sel:checked')].map(c => c.value);
   if (!ids.length) { toast('请先勾选要删除的草稿', 'err'); return; }
   if (!confirm('确认删除 ' + ids.length + ' 条草稿？此操作不可恢复。')) return;
@@ -692,10 +787,10 @@ async function batchDeleteDrafts(wrap) {
     catch (e) { console.warn('删除草稿失败', id, e); }
   }
   toast('已删除 ' + ok + '/' + ids.length + ' 条', 'ok');
-  loadReview(); loadCommit();
+  if (refresh) refresh(); else { loadReview(); loadCommit(); }
 }
 // 批量入库选中的草稿（仅提交勾选项，复用 KS 的 batch-commit 冲突/质量门控）
-async function batchCommitDrafts(wrap) {
+async function batchCommitDrafts(wrap, refresh) {
   const ids = [...wrap.querySelectorAll('.row-sel:checked')].map(c => c.value);
   if (!ids.length) { toast('请先勾选要入库的草稿', 'err'); return; }
   const btn = wrap.querySelector('[data-act="batch-commit"]');
@@ -708,7 +803,7 @@ async function batchCommitDrafts(wrap) {
       const rejected = (c.rejected && c.rejected.length) || 0;
       const conflicts = (c.conflicts && c.conflicts.length) || 0;
       toast(`批量入库完成：入库 ${committed} 条` + (conflicts ? `，冲突 ${conflicts} 条` : '') + (rejected ? `，拒绝 ${rejected} 条` : ''), rejected ? 'err' : 'ok');
-      loadReview(); loadCommit(); loadContext();
+      if (refresh) refresh(); else { loadReview(); loadCommit(); loadContext(); }
     } else {
       toast('批量入库失败：' + (data.error || ''), 'err');
     }
@@ -748,7 +843,7 @@ function bindDraftEditModal() {
 }
 async function loadCommit() {
   const r = await api('GET', '/api/drafts', { query: { limit: 200 } });
-  const list = asArray(r.data);
+  const list = asArray(r.data).filter(isPendingDraft);
   const box = $('#commitList'); box.innerHTML = '';
   list.forEach(d => box.appendChild(draftCard(d)));
   if (!list.length) box.innerHTML = '<div class="card"><div class="d">缓冲层暂无待入库草稿</div></div>';
@@ -758,14 +853,15 @@ async function loadCommit() {
   $('#conflictStat').textContent = conflicts.length + ' 冲突';
   $('#sideStat').textContent = `缓冲 ${list.length} · 冲突 ${conflicts.length}`;
 }
+function refreshAll() { loadCommit(); loadReview(); loadBackflow(); loadContext(); }
 async function commitOne(id) {
   const { ok, data } = await api('POST', `/api/drafts/${id}/commit`, { body: {} });
-  if (ok && data.data && data.data.success) { toast('已入库：' + (data.data.committedPage || id), 'ok'); loadCommit(); loadReview(); loadContext(); }
+  if (ok && data.data && data.data.success) { toast('已入库：' + (data.data.committedPage || id), 'ok'); refreshAll(); }
   else toast('入库失败：' + ((data.data && data.data.reason) || data.error || ''), 'err');
 }
 async function delDraft(id) {
   await api('DELETE', `/api/drafts/${id}`, { query: { project: pickProject() } });
-  loadCommit(); loadReview();
+  refreshAll();
 }
 $('#batchBtn').onclick = async () => {
   const { ok, data } = await api('POST', '/api/drafts/batch-commit', { body: {} });
@@ -775,105 +871,507 @@ $('#batchBtn').onclick = async () => {
   } else toast('批量入库失败：' + (data.error || ''), 'err');
 };
 
-// ---- 回测（测试报告存档与回溯）----
+// ---- 回测（测试报告存档、分流与重测计划）----
+let retestScope = 'all';
+let retestPlanning = false;
 async function loadRetest() {
-  // 回测报告沉淀为缺陷经验，统一从 defect-experience 分类读取
-  const r = await api('GET', '/api/brain/pages', { query: { category: 'defect-experience' } });
-  const list = asArray(r.data);
-  const box = $('#retestList'); if (!box) return; box.innerHTML = '';
-  if (!list.length) { box.innerHTML = '<div class="card"><div class="d">暂无测试报告，请上传 Markdown/JSON 测试报告</div></div>'; return; }
-  list.forEach(p => {
-    const el = document.createElement('div'); el.className = 'card';
-    el.innerHTML = `<div class="h">${escapeHtml(p.title || p.slug || '')}</div><div class="d">${escapeHtml((p.content || '').slice(0, 240))}</div>`;
-    box.appendChild(el);
-  });
+  // 报告去向切换（沉淀入库 / 草稿审核）初始化
+  const modeSeg = $('#retestModeSeg');
+  if (modeSeg && !modeSeg.dataset.inited) {
+    modeSeg.dataset.inited = '1';
+    $$('#retestModeSeg button').forEach(b => b.onclick = () => {
+      retestMode = b.dataset.mode;
+      $$('#retestModeSeg button').forEach(x => x.classList.toggle('on', x === b));
+      const hint = $('#retestModeHint');
+      if (hint) hint.textContent = retestMode === 'commit'
+        ? '解析拆分后直接写入知识库，供重测计划使用'
+        : '整篇原文生成缺陷草稿，人工确认后入库';
+    });
+  }
+  // 重测计划区初始化
+  const planBtn = $('#retestPlanBtn');
+  if (planBtn && !planBtn.dataset.inited) {
+    planBtn.dataset.inited = '1';
+    planBtn.onclick = loadRetestPlan;
+    $$('#retestScopeSeg button').forEach(b => b.onclick = () => {
+      retestScope = b.dataset.scope;
+      $$('#retestScopeSeg button').forEach(x => x.classList.toggle('on', x === b));
+      loadRetestPlan();
+    });
+  }
+  // 沉淀为缺陷经验的测试报告（defect-experience）→ 表格：多选/批量删除/查看/分页/排序
+  await loadRetestList();
+  loadRetestPlan();
 }
-// ---- Git 协同（对齐 KS §12 · S1：config/status/init/commit）----
-// 垂直构建：UI 直接消费 BFF 的 /api/git/*（BFF 在 KS 不可达或 GIT_MOCK=1 时回退契约一致假数据）。
+// 回测沉淀历史条目：多选/批量删除/查看详情/分页/排序
+const retestState = { page: 1, size: 20, sortBy: 'updated', order: 'desc' };
+async function loadRetestList() {
+  const box = $('#retestList'); if (!box) return;
+  const st = retestState;
+  const r = await api('GET', '/api/brain/pages', {
+    query: { category: 'defect-experience', sortBy: st.sortBy, order: st.order, offset: (st.page - 1) * st.size, limit: st.size }
+  });
+  const body = r.data || {};
+  const list = asArray(body);
+  const total = Number(body.total != null ? body.total : list.length);
+  const pages = Math.max(1, Math.ceil(total / st.size));
+  if (st.page > pages) st.page = pages;
+  box.innerHTML = '';
+  if (!list.length) { box.innerHTML = '<div class="card"><div class="d">暂无测试报告，请上传 Markdown/JSON 测试报告</div></div>'; return; }
+  const wrap = document.createElement('div'); wrap.className = 'dt-wrap';
+  const selOpts = [
+    { v: 'updated', l: '更新时间' }, { v: 'title', l: '标题' }, { v: 'filename', l: '文件名' }
+  ].map(o => `<option value="${o.v}"${o.v === st.sortBy ? ' selected' : ''}>${o.l}</option>`).join('');
+  const sizeOpts = [10, 20, 50, 100].map(n => `<option${n === st.size ? ' selected' : ''}>${n}</option>`).join('');
+  wrap.innerHTML = `
+    <div class="toolbar">
+      <label class="selall"><input type="checkbox" id="rSelAll"/> 全选</label>
+      <button class="btn btn-sm btn-ghost-danger" data-act="batch-del">批量删除</button>
+      <span class="cnt" id="rSelCnt"></span>
+      <span class="flex-sp"></span>
+      <label class="sort-wrap">排序 <select id="rSortSel">${selOpts}</select><button class="btn btn-sm btn-ghost" id="rSortDir">${st.order === 'desc' ? '↓ 新→旧' : '↑ 旧→新'}</button></label>
+      <label class="sort-wrap">每页 <select id="rSizeSel">${sizeOpts}</select></label>
+      <span class="pager">
+        <button class="btn btn-sm" id="rPagePrev" ${st.page <= 1 ? 'disabled' : ''}>‹ 上一页</button>
+        <span class="page-info">第 ${st.page}/${pages} 页 · 共 ${total} 条</span>
+        <button class="btn btn-sm" id="rPageNext" ${st.page >= pages ? 'disabled' : ''}>下一页 ›</button>
+      </span>
+    </div>
+    <table class="dt">
+      <thead><tr><th></th><th>标题</th><th>分类</th><th>更新时间</th><th class="ops">操作</th></tr></thead>
+      <tbody></tbody>
+    </table>`;
+  box.appendChild(wrap);
+  const tb = wrap.querySelector('tbody');
+  list.forEach(p => {
+    const tr = document.createElement('tr');
+    const cat = p.category || 'defect-experience';
+    tr.innerHTML = `
+      <td><input type="checkbox" class="row-sel" value="${p.id}" data-cat="${cat}"/></td>
+      <td>${escapeHtml(p.title || p.slug || '')}</td>
+      <td>${escapeHtml(cat)}</td>
+      <td>${escapeHtml(p.updated != null ? new Date(p.updated).toLocaleString() : '')}</td>
+      <td class="ops"><div class="row-ops">
+        <button class="act-btn view" data-act="view" data-id="${p.id}" data-cat="${cat}" data-tip="查看" aria-label="查看">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <button class="act-btn del" data-act="del" data-id="${p.id}" data-cat="${cat}" data-tip="删除" aria-label="删除">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </button>
+      </div></td>`;
+    tb.appendChild(tr);
+  });
+  const selAll = wrap.querySelector('#rSelAll');
+  const rows = wrap.querySelectorAll('.row-sel');
+  const syncCnt = () => { const n = wrap.querySelectorAll('.row-sel:checked').length; const c = wrap.querySelector('#rSelCnt'); if (c) c.textContent = n ? ('已选 ' + n + ' 项') : ''; };
+  selAll.onchange = e => { rows.forEach(c => c.checked = e.target.checked); syncCnt(); };
+  rows.forEach(c => c.onchange = syncCnt);
+  wrap.querySelector('[data-act="batch-del"]').onclick = () => batchDeletePages(wrap, loadRetestList);
+  wrap.querySelector('#rSortSel').onchange = e => { st.sortBy = e.target.value; st.page = 1; loadRetestList(); };
+  wrap.querySelector('#rSortDir').onclick = () => { st.order = st.order === 'desc' ? 'asc' : 'desc'; st.page = 1; loadRetestList(); };
+  wrap.querySelector('#rSizeSel').onchange = e => { st.size = Number(e.target.value); st.page = 1; loadRetestList(); };
+  wrap.querySelector('#rPagePrev').onclick = () => { if (st.page > 1) { st.page--; loadRetestList(); } };
+  wrap.querySelector('#rPageNext').onclick = () => { if (st.page < pages) { st.page++; loadRetestList(); } };
+  wrap.querySelectorAll('[data-act="view"]').forEach(b => b.onclick = () => openPageDetail(b.dataset.cat, b.dataset.id));
+  wrap.querySelectorAll('[data-act="del"]').forEach(b => b.onclick = () => delPage(b.dataset.cat, b.dataset.id));
+}
+async function batchDeletePages(wrap, refresh) {
+  const rows = [...wrap.querySelectorAll('.row-sel:checked')];
+  if (!rows.length) { toast('请先勾选要删除的条目', 'err'); return; }
+  if (!confirm('确认删除 ' + rows.length + ' 条沉淀条目？此操作不可恢复。')) return;
+  const items = rows.map(c => ({ category: c.dataset.cat, id: c.value }));
+  const { ok, data } = await api('DELETE', '/api/brain/pages', { body: { items } });
+  if (ok) {
+    const n = (data.data && data.data.deleted && data.data.deleted.length) || rows.length;
+    toast('已删除 ' + n + ' 条', 'ok');
+  } else toast('删除失败：' + (data.error || ''), 'err');
+  if (refresh) refresh();
+}
+async function delPage(category, id) {
+  if (!confirm('确认删除该条目？此操作不可恢复。')) return;
+  const { ok, data } = await api('DELETE', `/api/brain/pages/${category}/${id}`, {});
+  if (ok) toast('已删除', 'ok'); else toast('删除失败：' + (data.error || ''), 'err');
+  loadRetestList();
+}
+async function loadRetestPlan() {
+  const box = $('#retestPlanList'); const msg = $('#retestPlanMsg');
+  if (!box) return;
+  if (retestPlanning) return;
+  retestPlanning = true;
+  if (msg) msg.className = 'test-msg'; if (msg) msg.textContent = '正在生成重测计划…';
+  box.innerHTML = '<div class="ps-loading">正在生成重测计划…</div>';
+  try {
+    const r = await api('POST', '/api/retest/plan', { body: { scope: retestScope, weights: { recentFail: 0.6, severity: 0.4 } } });
+    const data = r.ok && r.data && r.data.data;
+    if (!data || !Array.isArray(data.items)) throw new Error((r.data && r.data.error) || '返回结构异常');
+    const isMock = !!data._mock;
+    if (msg) {
+      msg.className = 'test-msg' + (isMock ? '' : ' ok');
+      msg.innerHTML = `共 ${data.total} 条候选 · 加权 ${(data.weights.recentFail * 100)}/近 + ${(data.weights.severity * 100)}/严${isMock ? '<span class="mock-tag">Mock 数据（KS 未就绪）</span>' : ''}`;
+    }
+    if (!data.items.length) { box.innerHTML = '<div class="card"><div class="d">当前范围无重测候选。上传测试报告或切换筛选范围后重试。</div></div>'; return; }
+    const SEV_COLOR = { critical: '#f87171', high: '#fb923c', medium: '#facc15', low: '#4ade80' };
+    box.innerHTML = data.items.map((it, i) => {
+      const sevColor = SEV_COLOR[it.severity] || '#9fb3c8';
+      const statusText = { fail: '失败', error: '错误', warn: '告警', pass: '通过', passed: '通过', unknown: '未知' }[it.status] || it.status;
+      const pct = Math.round(it.priority * 100);
+      return `<div class="card" style="margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-weight:700">${i + 1}. ${escapeHtml(it.title)}</span>
+          <span class="tag" style="color:${sevColor};border-color:${sevColor}66;background:${sevColor}1f">${escapeHtml(it.severity)}</span>
+          <span class="tag" style="${it.status === 'fail' || it.status === 'error' ? 'color:#fca5a5;border-color:#f8717166;background:#f871711f' : ''}">${statusText}</span>
+          ${it.group ? `<span class="tag">${escapeHtml(it.group)}</span>` : ''}
+          <span class="hint" style="margin-left:auto">优先级 ${pct}%</span>
+        </div>
+        <div style="height:6px;border-radius:4px;background:rgba(0,0,0,.25);margin-top:8px;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#4f8cff,#a78bfa);border-radius:4px"></div></div>
+        <div class="d" style="margin-top:6px">${escapeHtml(it.preview || '')}</div>
+        <div class="d" style="color:var(--text-3,#9fb3c8);font-size:12px;margin-top:4px">${it.uploadedAt ? '失败时间 ' + escapeHtml(it.uploadedAt.slice(0, 10)) + ' · ' : ''}近期权重 ${it.recentFailScore} · 严重度权重 ${it.severityScore}${it.raw ? ' · 溯源 ' + escapeHtml(it.raw) : ''}</div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    if (msg) { msg.className = 'test-msg err'; msg.textContent = '重测计划生成失败：' + e.message; }
+    box.innerHTML = '<div class="card"><div class="d">重测计划生成失败：' + escapeHtml(e.message) + '</div></div>';
+  } finally {
+    retestPlanning = false;
+  }
+}
+// ---- 知识检索（M3：keyword / hybrid 模式切换，走 KS /api/search）----
+let kbSearching = false;
+let kbSearchMode = 'keyword'; // 'keyword' | 'hybrid'
+function initKbSearch() {
+  const box = $('#kbSearchResults'); if (!box) return;
+  if (!box.dataset.inited) {
+    box.dataset.inited = '1';
+    $('#kbSearchBtn').onclick = doKbSearch;
+    $('#kbSearchInput').addEventListener('keydown', e => { if (e.key === 'Enter') doKbSearch(); });
+    $$('#kbModeSeg button').forEach(b => b.onclick = () => {
+      kbSearchMode = b.dataset.mode;
+      $$('#kbModeSeg button').forEach(x => x.classList.toggle('on', x === b));
+    });
+  }
+  // 返回本视图时聚焦搜索框
+  const inp = $('#kbSearchInput'); if (inp && !inp.value) inp.focus();
+}
+async function doKbSearch() {
+  const inp = $('#kbSearchInput'); if (!inp) return;
+  const query = inp.value.trim();
+  const box = $('#kbSearchResults'); const meta = $('#kbSearchMeta');
+  if (!query) { toast('请输入检索关键词', 'err'); inp.focus(); return; }
+  if (kbSearching) return;
+  kbSearching = true;
+  if (meta) meta.innerHTML = '<span class="ps-loading">检索中…</span>';
+  box.innerHTML = '<div class="ps-loading">正在检索…</div>';
+  // hybrid 模式透传 mode=semantic + retrieval 段（KS case_generator 内部走 RRF 融合 + 可选 rerank）
+  const body = { query, mode: kbSearchMode === 'hybrid' ? 'semantic' : 'keyword', limit: 12 };
+  if (kbSearchMode === 'hybrid') body.retrieval = { mode: 'hybrid' };
+  let resp = await api('POST', '/api/search', { body });
+  let results = (resp.ok && resp.data && resp.data.data && resp.data.data.results) || [];
+  // hybrid 无命中时自动回退 keyword 重试
+  let fellback = false;
+  if (kbSearchMode === 'hybrid' && !results.length) {
+    fellback = true;
+    resp = await api('POST', '/api/search', { body: { query, mode: 'keyword', limit: 12 } });
+    results = (resp.ok && resp.data && resp.data.data && resp.data.data.results) || [];
+  }
+  kbSearching = false;
+  const usedMode = fellback ? 'keyword' : kbSearchMode;
+  const backend = usedMode === 'hybrid' ? '检索后端：本地 BGE（离线）' : '检索后端：BM25 关键词（本地）';
+  if (meta) meta.innerHTML = `模式：<b>${usedMode === 'hybrid' ? '混合语义' : '关键词'}</b> · 命中 ${results.length} 条 · ${backend}${fellback ? ' · <span class="mock-tag">语义无命中，已自动回退关键词</span>' : ''}`;
+  if (!results.length) {
+    box.innerHTML = '<div class="card"><div class="d">未检索到相关内容。可尝试更换关键词，或在「入库看板」补充知识后重试。</div></div>';
+    return;
+  }
+  box.innerHTML = results.map((r, i) => {
+    const kind = r.type || 'other';
+    const isSem = usedMode === 'hybrid' && (r.rrf != null || r.dense != null || r.bm25 != null || r.rerank != null);
+    const badge = isSem ? '<span class="tag" style="background:rgba(139,92,246,.16);color:#c4b5fd">语义命中</span>'
+                        : (r.type ? `<span class="tag">${escapeHtml(r.type)}</span>` : '');
+    return `<div class="card" style="margin-bottom:10px">
+      <div class="h" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span>${i + 1}. ${escapeHtml(r.title || r.id || '')}</span>${badge}</div>
+      <div class="d" style="margin-top:4px">${escapeHtml((r.snippet || '').slice(0, 300))}</div>
+      ${(r.score != null) ? `<div class="d" style="color:var(--text-2,#9fb3c8);font-size:12px;margin-top:4px">评分 ${Number(r.score).toFixed(3)}${r.rrf != null ? ' · RRF ' + Number(r.rrf).toFixed(3) : ''}${r.rerank != null ? ' · rerank ' + Number(r.rerank).toFixed(3) : ''}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+// ---- Git 协同（对齐 KS §12 · S1 + S2 完整阶段）----
+// 垂直构建：UI 直接消费 BFF 的 /api/git/*（BFF 在 KS 不可达或 GIT_MOCK=1 时回退契约一致假数据；S2 直接代理真 KS）。
+// Git 配置现作为「系统设置 → Git 协同」卡（填充 settings modal 内的 git 表单字段）
+// 字段对齐 KS git_adapter 契约 {remote, branch, user}，由 KS 按项目隔离存储并执行。
 async function loadGitConfig() {
-  const box = $('#gitConfigBox'); if (!box) return;
   const { ok, data } = await api('GET', '/api/git/config');
   const cfg = (ok && data.data) || {};
-  box.innerHTML = `
-    <label class="fld"><span class="lbl">远端地址 (remote)</span>
-      <input class="inp" id="gitRemote" value="${escapeHtml(cfg.remote || '')}" placeholder="https://…/repo.git" /></label>
-    <label class="fld"><span class="lbl">分支 (branch)</span>
-      <input class="inp" id="gitBranch" value="${escapeHtml(cfg.branch || 'main')}" placeholder="main" /></label>
-    <label class="fld"><span class="lbl">用户名 (user.name)</span>
-      <input class="inp" id="gitUserName" value="${escapeHtml((cfg.user && cfg.user.name) || '')}" placeholder="可选" /></label>
-    <label class="fld"><span class="lbl">邮箱 (user.email)</span>
-      <input class="inp" id="gitUserEmail" value="${escapeHtml((cfg.user && cfg.user.email) || '')}" placeholder="可选" /></label>
-    ${cfg._mock ? '<div class="mock-tag">当前为 Mock 数据（KS 不可达或 GIT_MOCK=1）</div>' : ''}
-  `;
+  setVal('#gitRemoteUrl', cfg.remote || '');
+  setVal('#gitBranch', cfg.branch || 'main');
+  setVal('#gitUserName', (cfg.user && cfg.user.name) || '');
+  setVal('#gitUserEmail', (cfg.user && cfg.user.email) || '');
+  const hint = $('#gitCfgHint');
+  if (hint && cfg._mock) hint.innerHTML = '注：KS 不存储 Git 凭证；user 仅用于 commit 身份。<br><span class="mock-tag">当前为 Mock 数据（KS 不可达或 GIT_MOCK=1）</span>';
 }
+function setVal(sel, v) { const el = $(sel); if (el) el.value = v || ''; }
 $('#gitSaveCfgBtn').onclick = async () => {
   const msg = $('#gitCfgMsg'); if (!msg) return;
   const payload = {
-    remote: $('#gitRemote')?.value?.trim() || '',
+    remote: $('#gitRemoteUrl')?.value?.trim() || '',
     branch: $('#gitBranch')?.value?.trim() || 'main',
     user: { name: $('#gitUserName')?.value?.trim() || '', email: $('#gitUserEmail')?.value?.trim() || '' },
   };
   const { ok, data } = await api('PUT', '/api/git/config', { body: payload });
-  if (ok && data.success) { msg.textContent = '配置已保存'; msg.className = 'test-msg ok'; loadGitConfig(); }
-  else msg.textContent = '保存失败：' + (data.error || JSON.stringify(data)); msg.className = 'test-msg err';
+  if (ok && data.success) { msg.textContent = '配置已保存（不触发网络）'; msg.className = 'test-msg ok'; loadGitConfig(); }
+  else { msg.textContent = '保存失败：' + (data.error || JSON.stringify(data)); msg.className = 'test-msg err'; }
 };
 $('#gitInitBtn').onclick = async () => {
   const msg = $('#gitCfgMsg'); if (!msg) return;
-  const { ok, data } = await api('POST', '/api/git/init', { body: {} });
+  const { ok, data } = await api('POST', '/api/git/init', { body: { branch: $('#gitBranch')?.value?.trim() || 'main' } });
   if (ok && data.success) { msg.textContent = '仓库已初始化：' + (data.data?.branch || 'main'); msg.className = 'test-msg ok'; }
-  else msg.textContent = '初始化失败：' + (data.error || JSON.stringify(data)); msg.className = 'test-msg err';
+  else { msg.textContent = '初始化失败：' + (data.error || JSON.stringify(data)); msg.className = 'test-msg err'; }
 };
+
+// 系统设置：tab 切换（知识库与 AI / Git 协同）
+function switchSettingsTab(stab) {
+  $$('#settingsNav .stab').forEach(b => b.classList.toggle('on', b.dataset.stab === stab));
+  $$('.settings-panes .spane').forEach(p => p.classList.toggle('on', p.dataset.spane === stab));
+  if (stab === 'git') loadGitConfig();
+}
+$$('#settingsNav .stab').forEach(b => b.onclick = () => switchSettingsTab(b.dataset.stab));
+// Git 协同页 → 打开设置并定位到 Git 配置卡
+function openGitSettings() {
+  if (typeof openSettings === 'function') openSettings();
+  switchSettingsTab('git');
+}
+$('#gitSettingsBtn').onclick = openGitSettings;
 
 async function loadGitStatus() {
   const box = $('#gitStatusBox'); if (!box) return;
-  const { ok, data } = await api('GET', '/api/git/status');
+  const cards = $('#gitStatusCards'); const top = $('#gitTopLine');
+  const { ok, data } = await api('GET', '/api/git/status', { query: { scope: gitScope } });
   const s = (ok && data.data) || {};
+  const mockTag = s._mock ? '<span class="mock-tag">Mock</span>' : '';
+  if (top) top.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="opacity:.6"><path d="M3 6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z"/><path d="M9 9l6 6M15 9l-6 6"/></svg> 仓库 <b>${escapeHtml(s.localPath || (gitScope === 'shared' ? '共享库' : '本地仓库'))}</b> ${mockTag} ${s.branch ? '<span class="git-branch-tag"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>' + escapeHtml(s.branch) + '</span>' : ''}`;
   if (!s.initialized) {
-    box.innerHTML = `<div class="d">仓库尚未初始化${s._mock ? '（Mock 数据）' : ''}。请先在「Git 配置」中初始化，或等待 KS 侧就绪。</div>`;
+    if (cards) cards.innerHTML = '';
+    box.innerHTML = `<div class="d" style="padding:24px;text-align:center;color:var(--text-3)">仓库尚未初始化${s._mock ? '（Mock 数据）' : ''}。请在「系统设置 → Git 协同」中初始化，或等待 KS 侧就绪。</div>`;
     return;
   }
-  const section = (title, arr) => `<div class="git-sec"><div class="git-sec-h">${title}（${asArray(arr).length}）</div>${
-    asArray(arr).length ? asArray(arr).map(x => `<div class="git-row">${escapeHtml(typeof x === 'string' ? x : (x.path || x.name || JSON.stringify(x)))}</div>`).join('') : '<div class="git-row dim">无</div>'
-  }</div>`;
+  // 状态概览：卡片网格
+  const iconBranch = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>';
+  const iconSync = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
+  const iconUntracked = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="13" x2="12" y2="17"/><line x1="10" y1="15" x2="14" y2="15"/></svg>';
+  const iconModified = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>';
+  const iconStaged = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 11 17 15 13"/></svg>';
+  const iconConflict = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+  const stat = (k, v, d, icon, cls) => `<div class="git-stat-card ${cls || ''}"><div class="git-stat-icon">${icon}</div><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`;
+  const conflictCount = asArray(s.conflicts).length;
+  const behindCount = s.behind || 0;
+  if (cards) cards.innerHTML = [
+    stat('当前分支', escapeHtml(s.branch || 'main'), '活跃分支', iconBranch, 'ok'),
+    stat('领先 / 落后', `${s.ahead || 0} / ${behindCount}`, '相对远端', iconSync, behindCount > 0 ? 'alert' : ''),
+    stat('未跟踪', asArray(s.untracked).length, '待纳入版本', iconUntracked, ''),
+    stat('已修改', asArray(s.modified).length, '工作区变更', iconModified, asArray(s.modified).length > 0 ? 'alert' : ''),
+    stat('已暂存', asArray(s.staged).length, '待提交', iconStaged, asArray(s.staged).length > 0 ? 'ok' : ''),
+    stat('合并冲突', conflictCount, '需解决', iconConflict, conflictCount > 0 ? 'danger' : ''),
+  ].join('');
+  // 文件列表
+  const fileIcon = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+  const section = (title, arr, badge) => `<div class="git-sec"><div class="git-sec-h">${title}<span class="git-count">${asArray(arr).length}</span></div><div class="git-file-list">${
+    asArray(arr).length ? asArray(arr).map(x => {
+      const p = escapeHtml(typeof x === 'string' ? x : (x.path || x.name || JSON.stringify(x)));
+      const dp = escapeHtml(typeof x === 'string' ? x : (x.path || ''));
+      return `<div class="git-file clickable" data-path="${dp}"><span class="git-file-icon">${fileIcon}</span><span class="git-file-path">${p}</span>${badge ? `<span class="git-file-badge ${badge}">${badge}</span>` : ''}</div>`;
+    }).join('') : '<div class="git-file dim"><span class="git-file-icon">' + fileIcon + '</span><span class="git-file-path">无</span></div>'
+  }</div></div>`;
+  const conflictSec = s.hasConflict ? `<div class="git-sec"><div class="git-sec-h" style="color:#fbbf24">合并冲突<span class="git-count" style="background:rgba(239,68,68,.14);color:#f87171">${asArray(s.conflicts).length}</span></div><div class="git-file-list">${
+    asArray(s.conflicts).map(x => {
+      const p = escapeHtml(typeof x === 'string' ? x : (x.path || x));
+      const dp = escapeHtml(typeof x === 'string' ? x : (x.path || ''));
+      return `<div class="git-file clickable" data-path="${dp}" data-conflict="1"><span class="git-file-icon" style="color:#f87171">${iconConflict}</span><span class="git-file-path">${p}</span><span class="git-file-badge conflict">conflict</span></div>`;
+    }).join('')
+  }</div></div>` : '';
   box.innerHTML = `
-    <div class="git-top">分支 <b>${escapeHtml(s.branch || 'main')}</b> · 领先 ${s.ahead || 0} · 落后 ${s.behind || 0}${s._mock ? ' · <span class="mock-tag">Mock</span>' : ''}</div>
-    ${section('未跟踪', s.untracked)}
-    ${section('已修改', s.modified)}
-    ${section('已暂存', s.staged)}
+    ${section('未跟踪', s.untracked, 'untracked')}
+    ${section('已修改', s.modified, 'modified')}
+    ${section('已暂存', s.staged, 'staged')}
+    ${conflictSec}
   `;
+  box.querySelectorAll('.git-file[data-path]').forEach(el => el.onclick = () => {
+    const p = el.getAttribute('data-path');
+    const ed = $('#gitConflictEditor');
+    if (ed && p && el.hasAttribute('data-conflict')) openConflictContent(p);
+  });
 }
 $('#gitCommitBtn').onclick = async () => {
-  const msg = $('#gitStatusMsg'); if (!msg) return;
+  const msg = $('#gitSyncMsg'); if (!msg) return;
   const cm = $('#gitCommitMsg'); const message = cm?.value?.trim() || '';
   if (!message) { msg.textContent = '请填写提交说明'; msg.className = 'test-msg err'; return; }
   const { ok, data } = await api('POST', '/api/git/commit', { body: { message } });
-  if (ok && data.success) { msg.textContent = '提交成功：' + (data.data?.commitHash || ''); msg.className = 'test-msg ok'; if (cm) cm.value = ''; loadGitStatus(); }
-  else msg.textContent = '提交失败：' + (data.error || JSON.stringify(data)); msg.className = 'test-msg err';
+  if (ok && data.success) {
+    const d = data.data || {};
+    let t = '提交成功：' + (d.commitHash || '');
+    if (d.gbrainSynced) t += ' · 已同步 GBrain'; else if (d.gbrainNote) t += ' · GBrain: ' + d.gbrainNote;
+    msg.textContent = t; msg.className = 'test-msg ok'; if (cm) cm.value = ''; loadGitStatus();
+  } else msg.textContent = '提交失败：' + (data.error || JSON.stringify(data)); msg.className = 'test-msg err';
 };
 
+// S2 · 远端同步
+async function gitSync(action, btnId, msgSel) {
+  const msg = $(msgSel); if (msg) msg.textContent = action + ' 中…'; msg.className = 'test-msg';
+  const { ok, data } = await api('POST', '/api/git/' + action, { body: {} });
+  if (ok && data.success) {
+    const d = data.data || {};
+    let t = action + ' 成功：分支 ' + (d.branch || '');
+    if (action === 'push' && d.output) t += ' · ' + String(d.output).split('\n')[0];
+    if ((action === 'pull' || action === 'fetch') && (d.ahead !== undefined || d.behind !== undefined)) t += ` · 领先 ${d.ahead || 0} / 落后 ${d.behind || 0}`;
+    if (msg) { msg.textContent = t; msg.className = 'test-msg ok'; }
+    loadGitStatus();
+  } else if (msg) { msg.textContent = action + ' 失败：' + (data.error || JSON.stringify(data)); msg.className = 'test-msg err'; }
+}
+$('#gitPushBtn').onclick = () => gitSync('push', 'gitPushBtn', '#gitSyncMsg');
+$('#gitPullBtn').onclick = () => gitSync('pull', 'gitPullBtn', '#gitSyncMsg');
+$('#gitFetchBtn').onclick = () => gitSync('fetch', 'gitFetchBtn', '#gitSyncMsg');
+
+// S2 · 提交历史
+$('#gitLogBtn').onclick = async () => {
+  const box = $('#gitLogBox'); if (!box) return;
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  if (box.style.display === 'none') return;
+  const { ok, data } = await api('GET', '/api/git/log', { query: { limit: 50 } });
+  const commits = (ok && data.data && data.data.commits) || [];
+  box.innerHTML = `<div class="git-sec-h">提交历史<span class="git-count">${commits.length}</span></div>` + (commits.length ? commits.map(c => {
+    const author = escapeHtml(c.author || '');
+    const initial = author.charAt(0).toUpperCase() || '?';
+    const shortHash = escapeHtml((c.hash || '').substring(0, 7));
+    return `<div class="git-commit-item"><div class="git-commit-dot">${initial}</div><div class="git-commit-body"><div class="git-commit-msg">${escapeHtml(c.message || '')}</div><div class="git-commit-meta"><span class="git-hash">${shortHash}</span><span class="git-author">${author}</span><span>${escapeHtml(c.date || '')}</span></div></div></div>`;
+  }).join('') : '<div class="git-file dim"><span class="git-file-path">无提交记录</span></div>');
+};
+
+// S2 · 变更 Diff
+$('#gitDiffBtn').onclick = async () => {
+  const box = $('#gitDiffBox'); if (!box) return;
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  if (box.style.display === 'none') return;
+  const { ok, data } = await api('GET', '/api/git/diff', { query: {} });
+  const files = (ok && data.data && data.data.files) || [];
+  box.innerHTML = `<div class="git-sec-h">变更文件<span class="git-count">${files.length}</span></div>` + (files.length ? files.map(f => {
+    const hunks = (f.hunks || []).join('\n');
+    // Color-code diff lines
+    const colored = escapeHtml(hunks).split('\n').map(line => {
+      if (line.startsWith('+') && !line.startsWith('+++')) return `<span class="diff-add">${line}</span>`;
+      if (line.startsWith('-') && !line.startsWith('---')) return `<span class="diff-del">${line}</span>`;
+      if (line.startsWith('@@')) return `<span class="diff-hunk">${line}</span>`;
+      return line;
+    }).join('\n');
+    return `<div class="git-diff-file"><div class="git-diff-header"><span class="git-diff-path">${escapeHtml(f.path || '')}</span><span class="git-diff-stat"><span class="add">+${f.additions || 0}</span><span class="del">-${f.deletions || 0}</span></span></div><pre class="git-diff-pre">${colored}</pre></div>`;
+  }).join('') : '<div class="git-file dim"><span class="git-file-path">无变更</span></div>');
+};
+
+// S2 · 分支管理
+$('#gitBranchesBtn').onclick = async () => {
+  const box = $('#gitBranchesBox'); if (!box) return;
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  if (box.style.display === 'none') return;
+  const { ok, data } = await api('GET', '/api/git/branches');
+  const b = (ok && data.data) || {};
+  const locals = asArray(b.locals), remotes = asArray(b.remotes);
+  const branchIcon = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>';
+  const remoteIcon = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
+  box.innerHTML = `
+    <div class="git-sec"><div class="git-sec-h">当前分支</div><div class="git-branch-item current"><span style="opacity:.6">${branchIcon}</span><span class="git-branch-name">${escapeHtml(b.current || 'main')}</span><span class="git-branch-current-tag">HEAD</span></div></div>
+    <div class="git-sec"><div class="git-sec-h">本地分支<span class="git-count">${locals.length}</span></div>${locals.map(x => `<div class="git-branch-item ${x === b.current ? 'current' : ''}" data-branch="${escapeHtml(x)}"><span style="opacity:.6">${branchIcon}</span><span class="git-branch-name">${escapeHtml(x)}</span>${x === b.current ? '<span class="git-branch-current-tag">HEAD</span>' : ''}</div>`).join('') || '<div class="git-file dim"><span class="git-file-path">无</span></div>'}</div>
+    <div class="git-sec"><div class="git-sec-h">远程分支<span class="git-count">${remotes.length}</span></div>${remotes.map(x => `<div class="git-branch-item"><span style="opacity:.6">${remoteIcon}</span><span class="git-branch-name">${escapeHtml(x)}</span></div>`).join('') || '<div class="git-file dim"><span class="git-file-path">无</span></div>'}</div>
+    <div style="margin-top:12px;display:flex;gap:8px"><input class="git-msg-input" id="gitNewBranch" placeholder="新分支名..." style="max-width:220px" /><button class="git-act-btn primary" id="gitCreateBranchBtn"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 新建并切换</button></div>`;
+  const nb = $('#gitNewBranch');
+  $('#gitCreateBranchBtn').onclick = async () => {
+    const name = nb?.value?.trim(); if (!name) return;
+    const r = await api('POST', '/api/git/switch-branch', { body: { branch: name, create: true } });
+    if (r.ok && r.data.success) { loadGitStatus(); box.style.display = 'none'; }
+    else if (box) { const m = $('#gitSyncMsg'); if (m) { m.textContent = '切换失败：' + (r.data.error || ''); m.className = 'test-msg err'; } }
+  };
+  box.querySelectorAll('.git-branch-item[data-branch]').forEach(el => el.onclick = async () => {
+    const name = el.getAttribute('data-branch');
+    const r = await api('POST', '/api/git/switch-branch', { body: { branch: name } });
+    if (r.ok && r.data.success) { loadGitStatus(); box.style.display = 'none'; }
+    else if (box) { const m = $('#gitSyncMsg'); if (m) { m.textContent = '切换失败：' + (r.data.error || ''); m.className = 'test-msg err'; } }
+  });
+};
+
+// S2 · 冲突处理（合并进 Git 协同页，更新徽章计数）
+async function loadGitConflicts() {
+  const box = $('#gitConflictList'); if (!box) return;
+  const cnt = $('#gitConflictCount');
+  const { ok, data } = await api('GET', '/api/git/status', { query: { scope: gitScope } });
+  const s = (ok && data.data) || {};
+  const conflicts = asArray(s.conflicts);
+  if (cnt) { cnt.textContent = String(conflicts.length); cnt.style.display = conflicts.length ? '' : 'none'; }
+  if (!s.hasConflict || !conflicts.length) { box.innerHTML = `<div class="d" style="padding:20px;text-align:center;color:var(--text-3);font-size:13px"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.4;margin-bottom:6px"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><br>当前无合并冲突${s._mock ? '（Mock）' : ''}。执行 Pull/Push 产生冲突后会在此列出。</div>`; return; }
+  const conflictIcon = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+  const fileIcon = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+  box.innerHTML = `<div class="git-file-list">${conflicts.map(p => {
+    const dp = escapeHtml(p);
+    return `<div class="git-file clickable" data-conflict="${dp}"><span class="git-file-icon" style="color:#f87171">${conflictIcon}</span><span class="git-file-path">${dp}</span><span class="git-file-badge conflict">conflict</span></div>`;
+  }).join('')}</div>`;
+  box.querySelectorAll('.git-conflict-row[data-conflict], .git-file[data-conflict]').forEach(el => el.onclick = () => openConflictContent(el.getAttribute('data-conflict')));
+}
+
+// Git 协同页：合并加载状态 + 冲突（支持本地仓库 / 共享库范围切换）
+let gitScope = 'local';
+async function showGit() {
+  await Promise.all([loadGitStatus(), loadGitConflicts()]);
+}
+$('#gitScopeSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
+  gitScope = b.dataset.scope || 'local';
+  $$('#gitScopeSeg button').forEach(x => x.classList.toggle('on', x === b));
+  showGit();
+});
+$('#gitConflictRefreshBtn').onclick = () => loadGitConflicts();
+
+async function openConflictContent(path) {
+  const box = $('#gitConflictEditor'); const msg = $('#gitConflictMsg'); if (!box) return;
+  const { ok, data } = await api('GET', '/api/git/conflict-content', { query: { path } });
+  if (!ok || !data.success) { if (msg) { msg.textContent = '读取冲突失败：' + (data.error || ''); msg.className = 'test-msg err'; } return; }
+  const c = data.data || {};
+  box.style.display = 'block';
+  box.innerHTML = `
+    <div class="git-conflict-head">
+      <div class="git-conflict-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+      <div><div class="git-conflict-title">${escapeHtml(c.filename || path)}</div><div class="git-conflict-sub">${escapeHtml(c.category || '')}${c.title ? ' · ' + escapeHtml(c.title) : ''}</div></div>
+    </div>
+    <textarea class="git-conflict-edit">${escapeHtml(c.content || '')}</textarea>
+    <div class="git-conflict-actions">
+      <button class="git-act-btn" data-str="ours"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg> 保留本地</button>
+      <button class="git-act-btn" data-str="theirs"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l6-6M3 12l6 6M3 12h18"/></svg> 保留远端</button>
+      <button class="git-act-btn" data-str="both"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg> 保留双方</button>
+      <button class="git-act-btn primary" data-str="manual"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> 保存手动编辑</button>
+    </div>`;
+  box.querySelectorAll('button[data-str]').forEach(btn => btn.onclick = async () => {
+    const strategy = btn.getAttribute('data-str');
+    let payload = { path, strategy };
+    if (strategy === 'manual') payload.content = box.querySelector('.git-conflict-edit').value;
+    const r = await api('POST', '/api/git/resolve-conflict', { body: payload });
+    if (r.ok && r.data.success) { if (msg) { msg.textContent = '冲突已解决（' + strategy + '）：' + path; msg.className = 'test-msg ok'; } box.style.display = 'none'; loadGitConflicts(); loadGitStatus(); }
+    else if (msg) { msg.textContent = '解决失败：' + (r.data.error || JSON.stringify(r.data)); msg.className = 'test-msg err'; }
+  });
+}
+
+// 报告回流去向：commit=沉淀入库（KS 真解析后直接写库）| draft=草稿审核（整篇原文生成 exec_backflow 草稿）
+let retestMode = 'commit';
 $('#retestFile').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
-  const form = new FormData(); form.append('file', f); form.append('type', 'test-report'); form.append('project', pickProject());
-  const { ok, data } = await api('POST', '/api/source-upload', { form });
-  if (ok) { toast('测试报告已入库：' + ((data.data && data.data.slug) || f.name), 'ok'); loadRetest(); }
-  else toast('上传失败：' + (data.error || ''), 'err');
+  if (retestMode === 'draft') {
+    // 草稿审核：整篇原文生成缺陷草稿，进草稿箱人工确认后入库（不丢现场）
+    const content = await f.text();
+    const { ok } = await api('POST', '/api/drafts', { body: { source: 'exec_backflow', type: 'defect_experience', title: '执行回流：' + f.name, content, metadata: { failureType: 'report_parse', fileName: f.name } } });
+    if (ok) { toast('已生成缺陷草稿，可在「待审核回流草稿」或入库看板中处理', 'ok'); loadBackflow(); loadCommit(); }
+    else toast('回流失败', 'err');
+  } else {
+    // 沉淀入库：KS 解析拆分（extract→normalize→classify）后直接写入缺陷经验/测试用例
+    const form = new FormData(); form.append('file', f); form.append('type', 'test-report'); form.append('project', pickProject());
+    const { ok, data } = await api('POST', '/api/source-upload', { form });
+    if (ok) { toast('测试报告已入库：' + ((data.data && data.data.slug) || f.name), 'ok'); loadRetest(); }
+    else toast('上传失败：' + (data.error || ''), 'err');
+  }
+  e.target.value = '';
 };
 
-// ---- 执行回流 ----
-async function loadBackflow() {
-  const r = await api('GET', '/api/drafts', { query: { source: 'exec_backflow', limit: 100 } });
-  const list = asArray(r.data);
-  const box = $('#backflowList'); box.innerHTML = '';
-  list.forEach(d => box.appendChild(draftCard(d)));
-  if (!list.length) box.innerHTML = '<div class="card"><div class="d">暂无执行回流缺陷草稿</div></div>';
-}
-$('#reportFile').onchange = async e => {
-  const f = e.target.files[0]; if (!f) return;
-  const content = await f.text();
-  const { ok } = await api('POST', '/api/drafts', { body: { source: 'exec_backflow', type: 'defect_experience', title: '执行回流：' + f.name, content, metadata: { failureType: 'report_parse', fileName: f.name } } });
-  if (ok) { toast('执行报告已解析并生成缺陷草稿', 'ok'); loadBackflow(); loadCommit(); }
-  else toast('回流失败', 'err');
-};
+
 
 // ---- 交互式知识图谱 ----
 const graphState = {
@@ -1241,13 +1739,16 @@ $('#saveDraft').onclick = async () => {
   const c = state.lastGenerated || '';
   if (!c) { toast('暂无可保存内容，请先生成', 'err'); return; }
   const op = ($('#streamTag').textContent || 'gen_cases').split(' ')[0];
-  const project = pickProject();
+  // 虚拟键 testCaseGenerator 是 BFF 维度的回退键，KS 仅认真实项目 id，保存时必须回写为 default
+  const rawProject = pickProject();
+  const project = (rawProject === 'testCaseGenerator') ? defaultProject : rawProject;
 
   // gen_outline：直接写入项目 Wiki（PRD 类型）
   if (op === 'gen_outline') {
     const { ok, data } = await api('POST', '/api/source-upload', {
       body: { type: 'prd', content: c, note: '测试用例大纲（模型生成）', project }
     });
+    // 注：上面已带 project；下方草稿保存分支同样显式携带 project，确保落到当前项目
     if (ok) { toast('用例大纲已沉淀为项目 Wiki：' + (data.data && data.data.slug || ''), 'ok'); loadContext(); }
     else toast('保存失败：' + (data.error || ''), 'err');
     return;
@@ -1261,6 +1762,7 @@ $('#saveDraft').onclick = async () => {
         type: 'test_script',
         title: '测试脚本（' + project + ' · 模型生成）',
         content: c,
+        project,
         metadata: { origin: 'ai_generate', engine: ($('#streamMeta').textContent || '') }
       }
     });
@@ -1279,6 +1781,7 @@ $('#saveDraft').onclick = async () => {
         type: 'test_case',
         title: '测试用例（' + project + ' · 模型生成）',
         content: c,
+        project,
         metadata: { origin: 'ai_generate', engine: ($('#streamMeta').textContent || '') }
       }
     });
@@ -1295,6 +1798,7 @@ $('#saveDraft').onclick = async () => {
         type: 'test_case',
         title: tc.title + '（' + project + '）',
         content: tc.content,
+        project,
         metadata: { origin: 'ai_generate', engine: ($('#streamMeta').textContent || ''), tcNum: tc.num }
       }
     })
@@ -1381,6 +1885,9 @@ function syncProviderUI() {
   const p = setAiProvider.value;
   const isCb = p === 'codebuddy';
   const isOpenAI = p === 'openai';
+  const isKimi = p === 'kimi';
+  // kimi 与 openai 一样是"直连端点"式通道，显示 Endpoint/Key/Model 字段
+  const needEndpointFields = isOpenAI || isKimi || (isCb && cbCustom.checked);
   cbSourceWrap.style.display = isCb ? '' : 'none';
   const custom = isCb && cbCustom.checked;
   cbModelField.style.display = (isCb && !custom) ? '' : 'none';
@@ -1388,14 +1895,15 @@ function syncProviderUI() {
   if (isCb && !custom && cbModel && /加载中/.test(cbModel.textContent || '')) {
     ensureCbModelOptions(cbModel.value);
   }
-  setEndpointField.style.display = (isOpenAI || (isCb && custom)) ? '' : 'none';
-  setKeyField.style.display = (isOpenAI || (isCb && custom)) ? '' : 'none';
-  setModelField.style.display = (isOpenAI || (isCb && custom)) ? '' : 'none';
-  // maxTurns 仅对 CodeBuddy 通道有意义（agentic 多轮）；OpenAI 为单次调用不使用
+  setEndpointField.style.display = needEndpointFields ? '' : 'none';
+  setKeyField.style.display = needEndpointFields ? '' : 'none';
+  setModelField.style.display = needEndpointFields ? '' : 'none';
+  // maxTurns 仅对 CodeBuddy 通道有意义（agentic 多轮）；OpenAI/Kimi 为单次调用不使用
   if (setMaxTurnsField) setMaxTurnsField.style.display = isCb ? '' : 'none';
   const note = document.getElementById('setAiNote');
   if (note) {
-    if (isOpenAI) note.textContent = '直连你的 OpenAI 兼容服务（/v1/chat/completions）生成。';
+    if (isKimi) note.textContent = 'Kimi CLI 免登录直连你的 OpenAI 兼容端点（data/kimi-home/config.toml 自动注入），无需账号登录。';
+    else if (isOpenAI) note.textContent = '直连你的 OpenAI 兼容服务（/v1/chat/completions）生成。';
     else if (isCb) note.textContent = custom
       ? 'Endpoint/Key 将注册为 CodeBuddy 自定义模型（写入 .codebuddy/models.json），生成时走你的自有模型。'
       : '使用 CodeBuddy 内置模型，无需填写 Endpoint；如需自有模型请选「自定义模型」。';
@@ -1452,18 +1960,25 @@ async function loadAiCliStatus() {
   badge.textContent = '检测中…'; badge.style.background = '#3a4250'; badge.style.color = '#fff';
   if (loginBtn) loginBtn.style.display = 'none';
   try {
-    const r = await api('GET', '/api/ai-cli/status');
+    const prov = (setAiProvider && setAiProvider.value) || 'kimi';
+    const r = await api('GET', '/api/ai-cli/status?provider=' + encodeURIComponent(prov));
     const outer = (r && r.data) || {};
     const d = outer.data || outer;
     if (!d || !d.status) { badge.textContent = '检测失败'; badge.style.background = '#b45309'; return; }
+    // kimi 免登录直连：CLI 状态恒为 logged_in 仅代表「CLI 已安装就绪」，
+    // 不代表端点真实可达（端点可达性由左下角状态栏 / 测试连接单独判定）。
+    // 为避免与左下角「端点不可达」产生「已连接」错觉，kimi 徽章明确标注「未验证端点」。
+    const isKimi = (setAiProvider && setAiProvider.value) === 'kimi';
     const map = {
-      logged_in: { t: '已登录', c: '#16a34a' },
+      logged_in: isKimi
+        ? { t: 'CLI 已就绪(未验证端点)', c: '#3a4250' }
+        : { t: '已登录', c: '#16a34a' },
       not_logged_in: { t: '未登录', c: '#dc2626' },
       not_installed: { t: 'CLI 未安装', c: '#b45309' },
     };
     const m = map[d.status] || { t: d.status, c: '#3a4250' };
     badge.textContent = m.t; badge.style.background = m.c;
-    if (msg) msg.textContent = d.message || '';
+    if (msg) msg.textContent = d.message || (isKimi && d.status === 'logged_in' ? 'CLI 已安装；端点连通性以左下角状态栏 / 测试连接为准' : '');
     if (loginBtn) loginBtn.style.display = (d.status === 'logged_in') ? 'none' : '';
     if (stat) stat.textContent = '';
   } catch (e) {
@@ -1477,7 +1992,8 @@ async function aiCliLogin() {
   if (stat) stat.textContent = '正在打开浏览器登录…';
   if (loginBtn) loginBtn.disabled = true;
   try {
-    const r = await api('POST', '/api/ai-cli/login', {});
+    const prov = (setAiProvider && setAiProvider.value) || 'kimi';
+    const r = await api('POST', '/api/ai-cli/login', { provider: prov });
     const outer = (r && r.data) || {};
     if (stat) stat.textContent = outer.message || outer.error || (r && r.ok ? '已触发登录' : '登录失败');
   } catch (e) {
@@ -1507,11 +2023,12 @@ if (setTest) setTest.addEventListener('click', async () => {
   setTestMsg.innerHTML = '连接中…'; setTestMsg.className = 'test-msg';
   const p = setAiProvider.value;
   const useCustom = (p === 'codebuddy') && cbCustom.checked;
+  const isEndpointChannel = (p === 'openai' || p === 'kimi' || useCustom);
   const aiPayload = {
     provider: p,
     useCustomModel: useCustom,
-    endpoint: (p === 'openai' || useCustom) ? setAiEndpoint.value.trim() : '',
-    apiKey: (p === 'openai' || useCustom) ? setAiKey.value.trim() : '',
+    endpoint: isEndpointChannel ? setAiEndpoint.value.trim() : '',
+    apiKey: isEndpointChannel ? setAiKey.value.trim() : '',
     model: (p === 'codebuddy') ? (useCustom ? setAiModel.value.trim() : cbModel.value) : setAiModel.value.trim(),
   };
   const { ok, data } = await api('POST', '/api/settings/test', { body: { ksApiBase: setKsApi.value.trim(), ai: aiPayload } });
@@ -1532,6 +2049,7 @@ const setSave = document.getElementById('setSave');
 if (setSave) setSave.addEventListener('click', async () => {
   const p = setAiProvider.value;
   const useCustom = (p === 'codebuddy') && cbCustom.checked;
+  const isEndpointChannel = (p === 'openai' || p === 'kimi' || useCustom);
   const model = (p === 'codebuddy')
     ? (useCustom ? setAiModel.value.trim() : cbModel.value)
     : setAiModel.value.trim();
@@ -1540,8 +2058,8 @@ if (setSave) setSave.addEventListener('click', async () => {
     ai: {
       provider: p,
       useCustomModel: useCustom,
-      endpoint: (p === 'openai' || useCustom) ? setAiEndpoint.value.trim() : '',
-      apiKey: (p === 'openai' || useCustom) ? setAiKey.value.trim() : '',
+      endpoint: isEndpointChannel ? setAiEndpoint.value.trim() : '',
+      apiKey: isEndpointChannel ? setAiKey.value.trim() : '',
       model: model,
       maxTurns: parseInt((setMaxTurns && setMaxTurns.value), 10) || 8,
     },
@@ -1568,6 +2086,7 @@ if (setSave) setSave.addEventListener('click', async () => {
   await loadSettings();
   await loadProjects();
   bindDraftEditModal();
+  bindDetailModal();
   // 知识库未连接时仅保留配置提示与「系统设置」，不加载各功能区（避免无意义的失败请求）
   if (state.ksOk) {
     await loadContext(); await loadReview(); await loadCommit(); await loadBackflow(); await loadScopes();
